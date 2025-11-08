@@ -30,7 +30,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "parcel-geojson>=0.1.0",  # Core package
+        "parcel-geojson @ git+https://github.com/ergeon/parcel-geojson.git",  # Core package
         "ultralytics>=8.0.0",      # YOLOv8
         "pillow>=9.0.0",           # Image processing
         "numpy>=1.20.0",
