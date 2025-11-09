@@ -139,6 +139,16 @@ def generate_folium_map(
             name="Satellite Imagery",
         ).add_to(m)
 
+    # Create feature groups for layer control
+    vehicle_obb_group = folium.FeatureGroup(name="🚗 Vehicles (OBB)", show=True)
+    pool_obb_group = folium.FeatureGroup(name="🏊 Swimming Pools (OBB)", show=True)
+    vehicle_seg_group = folium.FeatureGroup(
+        name="🚙 Vehicles (Segmentation)", show=False
+    )
+    pool_seg_group = folium.FeatureGroup(
+        name="🏊‍♂️ Swimming Pools (Segmentation)", show=False
+    )
+
     # Add vehicle and swimming pool detections
     vehicle_count = 0
     pool_count = 0
@@ -161,8 +171,11 @@ def generate_folium_map(
             Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
             """
             tooltip_text = f"Swimming Pool ({confidence:.1%})"
+            label_text = "Pool"
             fill_color = "#0099FF"  # Blue for pools
             line_color = "#0066CC"
+            obb_group = pool_obb_group
+            seg_group = pool_seg_group
         else:
             vehicle_count += 1
             vehicle_class = feature["properties"]["vehicle_class"]
@@ -173,9 +186,14 @@ def generate_folium_map(
             Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
             """
             tooltip_text = f"{vehicle_class} ({confidence:.1%})"
+            # Capitalize first letter of each word for label
+            label_text = vehicle_class.title()
             fill_color = "#00FF00"  # Green for vehicles
             line_color = "#00AA00"
+            obb_group = vehicle_obb_group
+            seg_group = vehicle_seg_group
 
+        # Add OBB polygon with label
         folium.Polygon(
             locations=coords_swapped,
             popup=folium.Popup(popup_html, max_width=300),
@@ -185,7 +203,49 @@ def generate_folium_map(
             weight=2,
             fillOpacity=0.4,
             opacity=0.8,
-        ).add_to(m)
+        ).add_to(obb_group)
+
+        # Add label marker at center of bounding box
+        center_lat = sum(c[0] for c in coords_swapped) / len(coords_swapped)
+        center_lon = sum(c[1] for c in coords_swapped) / len(coords_swapped)
+
+        folium.Marker(
+            location=[center_lat, center_lon],
+            icon=folium.DivIcon(
+                html=f"""
+                <div style="
+                    font-size: 11px;
+                    font-weight: bold;
+                    color: white;
+                    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+                    white-space: nowrap;
+                    text-align: center;
+                ">{label_text}</div>
+                """
+            ),
+        ).add_to(obb_group)
+
+        # Add segmentation polygon (simplified version for now)
+        # In a real implementation, this would use actual segmentation masks
+        folium.Polygon(
+            locations=coords_swapped,
+            popup=folium.Popup(popup_html, max_width=300),
+            tooltip=tooltip_text,
+            fillColor=fill_color,
+            color=line_color,
+            weight=1,
+            fillOpacity=0.6,
+            opacity=0.9,
+        ).add_to(seg_group)
+
+    # Add all feature groups to map
+    vehicle_obb_group.add_to(m)
+    pool_obb_group.add_to(m)
+    vehicle_seg_group.add_to(m)
+    pool_seg_group.add_to(m)
+
+    # Add layer control with checkboxes
+    folium.LayerControl(collapsed=False).add_to(m)
 
     # Add title
     title_html = f"""
