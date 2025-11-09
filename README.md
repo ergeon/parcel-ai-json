@@ -99,25 +99,38 @@ geojson = detector.detect_vehicles_geojson(satellite_image)
 - **`seg`**: Segmentation masks - Precise pixel-level outlines (COCO dataset)
 - **`bbox`**: Regular axis-aligned bounding boxes
 
-## Driveway Detection
+## Swimming Pool Detection
 
-Driveway detection requires a custom-trained model since standard YOLO models don't include "driveway" as a class.
+Swimming pool detection works out of the box using YOLOv8-OBB (DOTA dataset includes "swimming pool" as class 14).
 
 ```python
-from parcel_ai_json import DrivewayDetectionService
+from parcel_ai_json import SwimmingPoolDetectionService
 
-# This will raise NotImplementedError with instructions
-detector = DrivewayDetectionService()
+# Initialize detector
+detector = SwimmingPoolDetectionService(
+    confidence_threshold=0.3,
+)
+
+# Detect swimming pools
+satellite_image = {
+    "path": "satellite.jpg",
+    "center_lat": 37.7749,
+    "center_lon": -122.4194,
+    "zoom_level": 20,
+}
+
+# Get detections with area estimates
+pools = detector.detect_swimming_pools(satellite_image)
+
+for pool in pools:
+    print(f"Swimming pool detected!")
+    print(f"  Confidence: {pool.confidence:.2%}")
+    print(f"  Approximate area: {pool.area_sqm:.1f} m²")
+    print(f"  Location: {pool.geo_polygon[0]}")
+
+# Or get GeoJSON directly
+geojson = detector.detect_swimming_pools_geojson(satellite_image)
 ```
-
-**To implement driveway detection, you can:**
-
-1. **Train a custom YOLOv8-seg model** on satellite imagery with driveway annotations
-2. **Use semantic segmentation models** (DeepLabV3, SegFormer) trained on satellite datasets
-3. **Use SAM (Segment Anything Model)** with manual prompts for each image
-4. **Train on public datasets** like SpaceNet or xView that may include pavement/driveway classes
-
-The `DrivewayDetectionService` provides the interface - you just need to provide a trained model.
 
 ## GeoJSON Output Format
 
