@@ -13,10 +13,11 @@ Standalone AI/ML package for vehicle detection in satellite imagery using YOLOv8
 
 ### Size Constraints
 - **parcel-geojson**: ~50MB (Lambda-compatible ≤250MB limit)
-- **parcel-ai-json**: ~600MB (PyTorch + YOLOv8)
+- **parcel-ai-json**: ~600MB runtime (PyTorch + YOLOv8 + model)
+  - Package size: ~1MB (models auto-downloaded separately)
   - PyTorch: ~500MB
   - ultralytics: ~50MB
-  - yolov8m-obb.pt model: 51MB
+  - yolov8m-obb.pt model: 51MB (downloaded to ~/.ultralytics/ on first use)
 
 ### Deployment Options
 | Environment | Packages | Size | Features |
@@ -33,8 +34,7 @@ parcel-ai-json/
 ├── parcel_ai_json/
 │   ├── __init__.py              # Exports: VehicleDetectionService
 │   ├── vehicle_detector.py      # YOLOv8-OBB vehicle detection
-│   └── models/
-│       └── yolov8m-obb.pt      # 51MB model (DOTA-trained)
+│   └── coordinate_converter.py  # Geodesic coordinate transformations
 ├── tests/
 │   └── test_vehicle_detector.py # 16 tests for vehicle detection
 ├── examples/
@@ -96,7 +96,7 @@ Input: Satellite Image + Center Coordinates
 1. Load Image (PIL)
     ↓
 2. YOLOv8m-OBB Inference
-   - Model: models/yolov8m-obb.pt
+   - Model: yolov8m-obb.pt (auto-downloaded to ~/.ultralytics/)
    - Confidence threshold: 0.25 (default)
    - NMS threshold: 0.45
     ↓
@@ -225,17 +225,18 @@ parcel-ai-json can be installed and used standalone without parcel-geojson.
 - Neck: PANet
 - Head: Decoupled OBB detection head
 
-**Download**: Bundled in `parcel_ai_json/models/yolov8m-obb.pt`
+**Download**: Auto-downloaded to `~/.ultralytics/` on first use by the ultralytics library.
 
-**Alternative Models** (not included):
+**Alternative Models** (also auto-downloadable):
 - `yolov8n-obb.pt`: 6.2MB, 7.2x faster, **0% detection on aerial** (COCO-trained)
 - `yolov8l-obb.pt`: 83MB, higher accuracy, slower
 - `yolov8x-obb.pt`: 131MB, highest accuracy, slowest
 
 **Why yolov8m-obb?**
 - Good balance of speed vs. accuracy
-- Proven on aerial imagery
-- Reasonable size for git repo (<100MB GitHub warning threshold)
+- Proven on aerial imagery (DOTA dataset)
+- OBB (Oriented Bounding Boxes) better for rotated vehicles
+- Auto-downloaded on first use (keeps package size small)
 
 ## Testing
 
@@ -360,22 +361,17 @@ pip install git+https://github.com/ergeon/parcel-geojson.git
 - Verify using yolov8m-obb.pt (DOTA-trained)
 - Lower confidence threshold (default 0.25 → 0.15)
 
-### 4. Model File Not Found
+### 4. Model Download Issues
 
-**Error**: `FileNotFoundError: yolov8m-obb.pt not found`
+**Error**: Model download fails or is slow
 
-**Cause**: Model not in package or wrong path
+**Cause**: Network issues or firewall blocking ultralytics download
 
 **Solution**:
-```python
-import pkg_resources
-
-model_path = pkg_resources.resource_filename(
-    'parcel_ai_json',
-    'models/yolov8m-obb.pt'
-)
-service = VehicleDetectionService(model_path=model_path)
-```
+- The model is automatically downloaded to `~/.ultralytics/` on first use
+- First detection will take longer (~30s for 51MB download)
+- Pre-download manually: `from ultralytics import YOLO; YOLO('yolov8m-obb.pt')`
+- Check `~/.ultralytics/` directory for downloaded models
 
 ## Future Enhancements
 
@@ -383,7 +379,7 @@ service = VehicleDetectionService(model_path=model_path)
 1. **Building Detection**: YOLOv8 for building footprints
 2. **Fence Detection**: Custom model for fence line detection
 3. **Batch API**: Process multiple addresses in parallel
-4. **Model Registry**: Download models on-demand (not bundled)
+4. **Model Caching**: Cache downloaded models in project directory
 5. **TorchScript**: Compiled models for faster loading
 
 ### Model Improvements
@@ -423,10 +419,10 @@ service = VehicleDetectionService(model_path=model_path)
 When starting a new Claude Code session:
 
 1. **Read this file first** to understand architecture
-2. **Check dependencies**: Ensure parcel-geojson installed
+2. **Check dependencies**: Ensure required packages installed
 3. **Run tests**: `pytest tests/ -v`
-4. **Review model**: Check `models/yolov8m-obb.pt` exists (51MB)
-5. **Test detection**: Run `examples/detect_vehicles_example.py`
+4. **Model auto-download**: First run will download yolov8m-obb.pt (51MB) to ~/.ultralytics/
+5. **Test detection**: Run `scripts/generate_examples.py`
 
 ## Related Packages
 

@@ -76,8 +76,9 @@ class VehicleDetectionService:
         """Initialize vehicle detection service.
 
         Args:
-            model_path: Path to YOLO model weights (e.g., 'yolov8n.pt', 'spacenet_vehicles.pt')
-                       If None, uses default YOLOv8n (requires fine-tuning for satellites)
+            model_path: Path to YOLO model weights (e.g., 'yolov8m-obb.pt', 'yolov8n.pt')
+                       If None, uses yolov8m-obb.pt (optimized for aerial imagery)
+                       Model will be auto-downloaded on first use to ~/.ultralytics/
             confidence_threshold: Minimum confidence score for detections (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
         """
@@ -86,17 +87,19 @@ class VehicleDetectionService:
         self.device = device
         self._model = None
 
-        # Vehicle class names to detect (YOLO COCO classes)
-        # Standard YOLO: car=2, motorcycle=3, bus=5, truck=7
-        # Custom models may have different class mappings
+        # Vehicle class names to detect
+        # DOTA dataset (aerial imagery): "small vehicle", "large vehicle"
+        # COCO dataset (ground-level): car=2, motorcycle=3, bus=5, truck=7
         self.vehicle_classes = {"car", "truck", "bus", "motorcycle", "vehicle"}
 
     def _load_model(self):
         """Lazy-load the YOLO model.
 
+        Models are automatically downloaded to ~/.ultralytics/ on first use.
+
         Raises:
             ImportError: If ultralytics is not installed
-            FileNotFoundError: If model_path doesn't exist
+            FileNotFoundError: If custom model_path doesn't exist
         """
         if self._model is not None:
             return
@@ -106,33 +109,35 @@ class VehicleDetectionService:
         except ImportError:
             raise ImportError(
                 "Vehicle detection requires ultralytics. "
-                "Install with: pip install parcel-geojson[vehicle-detection]"
+                "Install with: pip install parcel-ai-json"
             )
 
-        # Use default YOLOv8n if no model specified
-        model_file = self.model_path or "yolov8n.pt"
+        # Default to yolov8m-obb.pt (optimized for aerial imagery, DOTA dataset)
+        model_file = self.model_path or "yolov8m-obb.pt"
 
-        # Standard YOLO models that will be auto-downloaded
-        standard_models = {
-            "yolov8n.pt",
-            "yolov8s.pt",
-            "yolov8m.pt",
-            "yolov8l.pt",
-            "yolov8x.pt",
-            "yolov8n",
-            "yolov8s",
-            "yolov8m",
-            "yolov8l",
-            "yolov8x",
+        # Standard YOLO models that will be auto-downloaded by ultralytics
+        auto_download_models = {
+            # Regular models
+            "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
+            "yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x",
+            # OBB (Oriented Bounding Box) models for aerial imagery
+            "yolov8n-obb.pt", "yolov8s-obb.pt", "yolov8m-obb.pt",
+            "yolov8l-obb.pt", "yolov8x-obb.pt",
+            "yolov8n-obb", "yolov8s-obb", "yolov8m-obb", "yolov8l-obb", "yolov8x-obb",
         }
 
-        # Check if custom model exists (skip check for standard models)
-        if self.model_path and model_file not in standard_models:
+        # Check if custom model exists (skip check for auto-download models)
+        if self.model_path and model_file not in auto_download_models:
             if not Path(self.model_path).exists():
                 raise FileNotFoundError(
                     f"Model file not found: {self.model_path}\n"
                     f"Please provide a valid YOLO model file."
                 )
+
+        # Load model (ultralytics will auto-download to ~/.ultralytics/ if needed)
+        print(f"Loading YOLOv8 model: {model_file}")
+        if model_file in auto_download_models:
+            print(f"  Model will be downloaded to ~/.ultralytics/ on first use")
 
         self._model = YOLO(model_file)
         self._model.to(self.device)

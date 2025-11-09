@@ -114,9 +114,11 @@ No dependency on parcel-geojson or any other packages.
 - Vehicle detection: ~7.5s per address (98% of total time)
 - Core GeoJSON generation: ~0.16s per address
 
-## Models Included
+## Model Auto-Download
 
-- `yolov8m-obb.pt` (51MB): YOLOv8 medium model with Oriented Bounding Boxes, trained on DOTA aerial imagery dataset
+The package uses `yolov8m-obb.pt` (51MB) - YOLOv8 medium model with Oriented Bounding Boxes, trained on DOTA aerial imagery dataset.
+
+**The model is automatically downloaded on first use** to `~/.ultralytics/` by the ultralytics library. This keeps the package size small (~1MB instead of ~50MB).
 
 ## Development
 

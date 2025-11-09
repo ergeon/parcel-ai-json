@@ -45,10 +45,7 @@ setup(
             "flake8>=6.0.0",
         ],
     },
-    package_data={
-        "parcel_ai_json": [
-            "models/*.pt",  # Include YOLO model files
-        ],
-    },
-    include_package_data=True,
+    # Models are auto-downloaded by ultralytics on first use to ~/.ultralytics/
+    # Do not bundle models in package to keep package size small
+    include_package_data=False,
 )

@@ -382,11 +382,11 @@ def generate_examples(num_examples=20):
         coords_map = load_quote_coordinates(quotes_csv)
         print(f"✓ Loaded {len(coords_map)} quote coordinates")
 
-    # Initialize detector with aerial imagery model
+    # Initialize detector with aerial imagery model (auto-downloads yolov8m-obb.pt)
     print("\nInitializing vehicle detector...")
-    model_path = Path(__file__).parent.parent / "parcel_ai_json/models/yolov8m-obb.pt"
+    print("  Using yolov8m-obb.pt (will be downloaded to ~/.ultralytics/ on first use)")
     detector = VehicleDetectionService(
-        model_path=str(model_path), confidence_threshold=0.25
+        confidence_threshold=0.25  # Uses default yolov8m-obb.pt model
     )
     print("✓ Detector initialized")
 
