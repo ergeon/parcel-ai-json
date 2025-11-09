@@ -92,7 +92,7 @@ class SwimmingPoolDetectionService:
         model_file = self.model_path or "yolov8m-obb.pt"
 
         print(f"Loading YOLOv8-OBB model: {model_file}")
-        print(f"  Model will be downloaded to ~/.ultralytics/ on first use")
+        print("  Model will be downloaded to ~/.ultralytics/ on first use")
 
         self._model = YOLO(model_file)
         self._model.to(self.device)

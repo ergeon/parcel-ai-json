@@ -79,11 +79,13 @@ def generate_folium_map(
     """Generate interactive Folium map with satellite imagery and vehicle detections."""
     # Get image dimensions
     from PIL import Image
+
     with Image.open(satellite_image_path) as img:
         img_width, img_height = img.size
 
     # Create coordinate converter to get proper image bounds
     from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+
     converter = ImageCoordinateConverter(
         center_lat=center_lat,
         center_lon=center_lon,
@@ -113,7 +115,11 @@ def generate_folium_map(
         with open(satellite_image_path, "rb") as f:
             img_data = f.read()
 
-        img_format = "jpeg" if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"] else "png"
+        img_format = (
+            "jpeg"
+            if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"]
+            else "png"
+        )
         img_base64 = base64.b64encode(img_data).decode()
         img_url = f"data:image/{img_format};base64,{img_base64}"
 
@@ -308,9 +314,7 @@ def generate_html_visualization(results, output_dir):
                 f"{vehicle_count} vehicle{'s' if vehicle_count != 1 else ''}"
             )
         if pool_count > 0:
-            detection_parts.append(
-                f"{pool_count} pool{'s' if pool_count != 1 else ''}"
-            )
+            detection_parts.append(f"{pool_count} pool{'s' if pool_count != 1 else ''}")
 
         count_text = ", ".join(detection_parts) if detection_parts else "No detections"
 

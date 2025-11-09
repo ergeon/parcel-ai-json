@@ -114,14 +114,14 @@ class TestVehicleDetectionService:
 
     @patch("ultralytics.YOLO")
     def test_load_model_default(self, mock_yolo):
-        """Test loading default YOLO model (yolov8n)."""
+        """Test loading default YOLO model (yolov8m-obb)."""
         mock_model = Mock()
         mock_yolo.return_value = mock_model
 
         service = VehicleDetectionService()
         service._load_model()
 
-        mock_yolo.assert_called_once_with("yolov8n.pt")
+        mock_yolo.assert_called_once_with("yolov8m-obb.pt")
 
     @patch("ultralytics.YOLO")
     @patch("parcel_ai_json.vehicle_detector.Path")
@@ -174,6 +174,7 @@ class TestVehicleDetectionService:
         # Mock detection results (regular bbox format)
         mock_result = Mock()
         mock_result.obb = None
+        mock_result.masks = None  # Not a segmentation model
         mock_result.boxes = Mock()
 
         # Create mock boxes
@@ -226,6 +227,7 @@ class TestVehicleDetectionService:
 
         # Mock detection results (OBB format)
         mock_result = Mock()
+        mock_result.masks = None  # Not a segmentation model
         mock_result.obb = Mock()
         mock_result.obb.cls = torch.tensor([10, 11])  # small and large vehicle
         mock_result.obb.conf = torch.tensor([0.75, 0.65])
@@ -280,6 +282,7 @@ class TestVehicleDetectionService:
 
         # Mock detection results
         mock_result = Mock()
+        mock_result.masks = None  # Not a segmentation model
         mock_result.obb = None
         mock_result.boxes = Mock()
 
@@ -342,6 +345,7 @@ class TestVehicleDetectionService:
 
         # Mock empty detection results
         mock_result = Mock()
+        mock_result.masks = None  # Not a segmentation model
         mock_result.obb = None
         mock_result.boxes = None
 
@@ -399,6 +403,7 @@ class TestVehicleDetectionService:
 
         # Mock detection
         mock_result = Mock()
+        mock_result.masks = None  # Not a segmentation model
         mock_result.obb = None
         mock_result.boxes = Mock()
 

@@ -132,16 +132,38 @@ class VehicleDetectionService:
         # Standard YOLO models that will be auto-downloaded by ultralytics
         auto_download_models = {
             # Regular models
-            "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
-            "yolov8n", "yolov8s", "yolov8m", "yolov8l", "yolov8x",
+            "yolov8n.pt",
+            "yolov8s.pt",
+            "yolov8m.pt",
+            "yolov8l.pt",
+            "yolov8x.pt",
+            "yolov8n",
+            "yolov8s",
+            "yolov8m",
+            "yolov8l",
+            "yolov8x",
             # OBB (Oriented Bounding Box) models for aerial imagery
-            "yolov8n-obb.pt", "yolov8s-obb.pt", "yolov8m-obb.pt",
-            "yolov8l-obb.pt", "yolov8x-obb.pt",
-            "yolov8n-obb", "yolov8s-obb", "yolov8m-obb", "yolov8l-obb", "yolov8x-obb",
+            "yolov8n-obb.pt",
+            "yolov8s-obb.pt",
+            "yolov8m-obb.pt",
+            "yolov8l-obb.pt",
+            "yolov8x-obb.pt",
+            "yolov8n-obb",
+            "yolov8s-obb",
+            "yolov8m-obb",
+            "yolov8l-obb",
+            "yolov8x-obb",
             # Segmentation models
-            "yolov8n-seg.pt", "yolov8s-seg.pt", "yolov8m-seg.pt",
-            "yolov8l-seg.pt", "yolov8x-seg.pt",
-            "yolov8n-seg", "yolov8s-seg", "yolov8m-seg", "yolov8l-seg", "yolov8x-seg",
+            "yolov8n-seg.pt",
+            "yolov8s-seg.pt",
+            "yolov8m-seg.pt",
+            "yolov8l-seg.pt",
+            "yolov8x-seg.pt",
+            "yolov8n-seg",
+            "yolov8s-seg",
+            "yolov8m-seg",
+            "yolov8l-seg",
+            "yolov8x-seg",
         }
 
         # Check if custom model exists (skip check for auto-download models)
@@ -155,7 +177,7 @@ class VehicleDetectionService:
         # Load model (ultralytics will auto-download to ~/.ultralytics/ if needed)
         print(f"Loading YOLOv8 model: {model_file}")
         if model_file in auto_download_models:
-            print(f"  Model will be downloaded to ~/.ultralytics/ on first use")
+            print("  Model will be downloaded to ~/.ultralytics/ on first use")
 
         self._model = YOLO(model_file)
         self._model.to(self.device)
