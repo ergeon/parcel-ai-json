@@ -2,12 +2,12 @@
 
 ## Overview
 
-Independent AI/ML package for vehicle detection in satellite imagery using YOLOv8-OBB (Oriented Bounding Boxes) trained on the DOTA aerial dataset. Returns pixel coordinates only.
+Standalone AI/ML package for vehicle detection in satellite imagery using YOLOv8-OBB (Oriented Bounding Boxes) trained on the DOTA aerial dataset. Returns GeoJSON with geodesic coordinate transformations.
 
 **Key Principles**:
-1. Separate AI/ML dependencies from core package to keep `parcel-geojson` Lambda-compatible
+1. **Standalone package**: Complete vehicle detection + coordinate transformation + GeoJSON generation
 2. **No circular dependencies**: parcel-ai-json is independent, parcel-geojson optionally imports it
-3. **Single responsibility**: This package only detects vehicles and returns pixel coords; parcel-geojson handles coordinate transformation
+3. **Geodesic accuracy**: Uses pyproj for proper WGS84 transformations (not approximations)
 
 ## Why a Separate Package?
 
@@ -59,12 +59,12 @@ if self.enable_vehicle_detection and satellite_image:
     try:
         from parcel_ai_json import VehicleDetectionService
         detector = VehicleDetectionService(...)
-        detections = detector.detect_vehicles(image_path)  # Returns pixel coords
 
-        # parcel-geojson handles coordinate transformation
-        for detection in detections:
-            geo_polygon = coord_converter.bbox_to_polygon(*detection.pixel_bbox)
-            # Create GeoJSON feature with geo coordinates
+        # Returns GeoJSON FeatureCollection (complete)
+        vehicle_geojson = detector.detect_vehicles_geojson(satellite_image)
+
+        # Merge into main GeoJSON
+        features.extend(vehicle_geojson['features'])
     except ImportError:
         print("⚠️  Vehicle detection skipped")
         print("Install with: pip install parcel-ai-json")
@@ -91,9 +91,9 @@ if self.enable_vehicle_detection and satellite_image:
 ### Detection Pipeline
 
 ```
-Input: Satellite Image Path
+Input: Satellite Image + Center Coordinates
     ↓
-1. Load Image (PIL/OpenCV)
+1. Load Image (PIL)
     ↓
 2. YOLOv8m-OBB Inference
    - Model: models/yolov8m-obb.pt
@@ -102,17 +102,20 @@ Input: Satellite Image Path
     ↓
 3. Extract Detections
    - Filter by confidence
-   - Filter by vehicle class (car, truck, vehicle, etc.)
+   - Filter by vehicle class (small vehicle, large vehicle, etc.)
     ↓
-4. Create VehicleDetection Objects
-   - pixel_bbox: (x1, y1, x2, y2)
-   - confidence: float
-   - class_name: str
+4. Geodesic Coordinate Transformation
+   - Pixel → WGS84 using pyproj.Geod
+   - Accurate ellipsoidal calculations
     ↓
-Output: List[VehicleDetection] with pixel coordinates only
+5. Generate GeoJSON
+   - Create VehicleDetection objects with both pixel and geo coords
+   - Build FeatureCollection
+    ↓
+Output: GeoJSON FeatureCollection or List[VehicleDetection]
 ```
 
-**Note**: Geographic coordinate transformation is NOT done here - that's handled by parcel-geojson's `ImageCoordinateConverter`.
+**Coordinate Accuracy**: Uses pyproj geodesic forward calculations (not simple approximations).
 
 ### Code Location
 
@@ -130,8 +133,13 @@ class VehicleDetectionService:
 
     def detect_vehicles(
         self,
-        image_path: str
+        satellite_image: Dict  # {path, center_lat, center_lon, zoom_level}
     ) -> List[VehicleDetection]
+
+    def detect_vehicles_geojson(
+        self,
+        satellite_image: Dict
+    ) -> Dict  # GeoJSON FeatureCollection
 ```
 
 **VehicleDetection** dataclass:
@@ -139,8 +147,9 @@ class VehicleDetectionService:
 @dataclass
 class VehicleDetection:
     pixel_bbox: Tuple[float, float, float, float]  # (x1, y1, x2, y2)
+    geo_polygon: List[Tuple[float, float]]  # [(lon, lat), ...]
     confidence: float
-    class_name: str  # 'car', 'truck', 'small vehicle', 'large vehicle', etc.
+    class_name: str  # 'small vehicle', 'large vehicle' (DOTA classes)
 ```
 
 ### Model Performance
@@ -396,6 +405,7 @@ service = VehicleDetectionService(model_path=model_path)
 - `pillow>=9.0.0`: Image loading and processing
 - `numpy>=1.20.0`: Numerical operations
 - `torchvision>=0.15.0`: PyTorch vision utilities
+- `pyproj>=3.0.0`: Geodesic coordinate transformations (WGS84)
 
 ### Development Dependencies
 - `pytest>=7.0.0`: Testing framework

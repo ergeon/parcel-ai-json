@@ -6,8 +6,9 @@ Standalone AI/ML vehicle detection for satellite imagery with GeoJSON output.
 
 - **Vehicle Detection**: Detect vehicles in satellite imagery using YOLOv8-OBB (trained on DOTA aerial dataset)
 - **GeoJSON Output**: Returns vehicle locations as GeoJSON FeatureCollection
-- **Coordinate Conversion**: Automatic pixel → WGS84 coordinate transformation
-- **Standalone**: No external dependencies - works independently
+- **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
+- **Standalone**: Works independently - no dependency on parcel-geojson
+- **Interactive Maps**: Generate Folium visualizations with satellite overlay
 
 ## Installation
 
@@ -76,7 +77,7 @@ with open("vehicles.geojson", "w") as f:
       },
       "properties": {
         "feature_type": "vehicle",
-        "vehicle_class": "car",
+        "vehicle_class": "small vehicle",
         "confidence": 0.87,
         "pixel_bbox": [245.2, 389.1, 298.6, 445.3]
       }
