@@ -5,7 +5,9 @@ Standalone AI/ML vehicle detection for satellite imagery with GeoJSON output.
 ## Features
 
 - **Vehicle Detection**: Detect vehicles in satellite imagery using YOLOv8-OBB (trained on DOTA aerial dataset)
-- **GeoJSON Output**: Returns vehicle locations as GeoJSON FeatureCollection
+- **Swimming Pool Detection**: Detect swimming pools using YOLOv8-OBB (DOTA class 14)
+- **Amenity Detection**: Detect tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
+- **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
 - **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
 - **Standalone**: Works independently - no dependency on parcel-geojson
 - **Interactive Maps**: Generate Folium visualizations with satellite overlay
@@ -105,6 +107,46 @@ for pool in pools:
 # Or get GeoJSON directly
 geojson = detector.detect_swimming_pools_geojson(satellite_image)
 ```
+
+## Amenity Detection
+
+Detects residential amenities using YOLOv8-OBB (DOTA dataset includes tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields).
+
+```python
+from parcel_ai_json import AmenityDetectionService
+
+# Initialize detector
+detector = AmenityDetectionService(
+    confidence_threshold=0.3,
+)
+
+# Detect amenities
+satellite_image = {
+    "path": "satellite.jpg",
+    "center_lat": 37.7749,
+    "center_lon": -122.4194,
+    "zoom_level": 20,
+}
+
+# Get detections with area estimates
+amenities = detector.detect_amenities(satellite_image)
+
+for amenity in amenities:
+    print(f"{amenity.amenity_type.title()} detected!")
+    print(f"  Confidence: {amenity.confidence:.2%}")
+    print(f"  Approximate area: {amenity.area_sqm:.1f} m²")
+    print(f"  Location: {amenity.geo_polygon[0]}")
+
+# Or get GeoJSON directly
+geojson = detector.detect_amenities_geojson(satellite_image)
+```
+
+**Detectable amenities:**
+- Tennis courts
+- Basketball courts
+- Baseball diamonds
+- Soccer ball fields
+- Ground track fields
 
 ## GeoJSON Output Format
 

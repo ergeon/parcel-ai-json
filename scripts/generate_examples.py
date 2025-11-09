@@ -156,10 +156,12 @@ def generate_folium_map(
     # Create feature groups for layer control
     vehicle_group = folium.FeatureGroup(name="🚗 Vehicles", show=True)
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
+    amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
 
-    # Add vehicle and swimming pool detections
+    # Add vehicle, swimming pool, and amenity detections
     vehicle_count = 0
     pool_count = 0
+    amenity_count = 0
 
     for feature in geojson_data["features"]:
         coords = feature["geometry"]["coordinates"][0]
@@ -183,6 +185,32 @@ def generate_folium_map(
             fill_color = "#0099FF"  # Blue for pools
             line_color = "#0066CC"
             feature_group = pool_group
+        elif feature_type == "amenity":
+            amenity_count += 1
+            amenity_type = feature["properties"]["amenity_type"]
+            area_sqm = feature["properties"]["area_sqm"]
+
+            # Icons for different amenity types
+            amenity_icons = {
+                "tennis court": "🎾",
+                "basketball court": "🏀",
+                "baseball diamond": "⚾",
+                "soccer ball field": "⚽",
+                "ground track field": "🏃",
+            }
+            icon = amenity_icons.get(amenity_type, "🏟️")
+
+            popup_html = f"""
+            <b>{amenity_type.title()} Detection</b><br>
+            Confidence: {confidence:.1%}<br>
+            Area: {area_sqm:.1f} m²<br>
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            """
+            tooltip_text = f"{amenity_type.title()} ({confidence:.1%})"
+            label_text = f"{icon} {amenity_type.split()[0].title()}"
+            fill_color = "#FF6B00"  # Orange for amenities
+            line_color = "#CC5500"
+            feature_group = amenity_group
         else:
             vehicle_count += 1
             vehicle_class = feature["properties"]["vehicle_class"]
@@ -234,6 +262,7 @@ def generate_folium_map(
     # Add all feature groups to map
     vehicle_group.add_to(m)
     pool_group.add_to(m)
+    amenity_group.add_to(m)
 
     # Add layer control with checkboxes
     folium.LayerControl(collapsed=False).add_to(m)
@@ -245,7 +274,7 @@ def generate_folium_map(
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Swimming Pools:</b> {pool_count}
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count}
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -472,12 +501,13 @@ def generate_examples(num_examples=20):
     print("  Model: yolov8m-obb.pt (oriented bounding boxes)")
     print("  Models will be downloaded to ~/.ultralytics/ on first use")
 
-    from parcel_ai_json import SwimmingPoolDetectionService
+    from parcel_ai_json import SwimmingPoolDetectionService, AmenityDetectionService
 
     vehicle_detector = VehicleDetectionService(confidence_threshold=0.25)
     pool_detector = SwimmingPoolDetectionService(confidence_threshold=0.3)
+    amenity_detector = AmenityDetectionService(confidence_threshold=0.3)
 
-    print("✓ Detectors initialized (vehicles and swimming pools)")
+    print("✓ Detectors initialized (vehicles, pools, and amenities)")
 
     # Get list of available satellite images
     satellite_images = list(satellite_dir.glob("*.jpg"))
@@ -531,23 +561,37 @@ def generate_examples(num_examples=20):
                 "zoom_level": 20,
             }
 
-            # Detect vehicles and swimming pools
+            # Detect vehicles, swimming pools, and amenities
             vehicle_detections = vehicle_detector.detect_vehicles(satellite_image)
             pool_detections = pool_detector.detect_swimming_pools(satellite_image)
+            amenity_detections = amenity_detector.detect_amenities(satellite_image)
 
             # Generate GeoJSON
             vehicle_geojson = vehicle_detector.detect_vehicles_geojson(satellite_image)
             pool_geojson = pool_detector.detect_swimming_pools_geojson(satellite_image)
+            amenity_geojson = amenity_detector.detect_amenities_geojson(satellite_image)
 
             # Merge GeoJSON features
             combined_geojson = {
                 "type": "FeatureCollection",
-                "features": vehicle_geojson["features"] + pool_geojson["features"],
+                "features": vehicle_geojson["features"]
+                + pool_geojson["features"]
+                + amenity_geojson["features"],
             }
+
+            # Count amenities by type
+            amenity_counts = {}
+            for detection in amenity_detections:
+                amenity_type = detection.amenity_type
+                amenity_counts[amenity_type] = amenity_counts.get(amenity_type, 0) + 1
+
+            amenity_summary = ", ".join(
+                [f"{count} {atype}" for atype, count in amenity_counts.items()]
+            ) if amenity_counts else "none"
 
             print(
                 f"  ✓ Detected: {len(vehicle_detections)} vehicles, "
-                f"{len(pool_detections)} swimming pools"
+                f"{len(pool_detections)} pools, amenities: {amenity_summary}"
             )
 
             # Save to geojson subdirectory
