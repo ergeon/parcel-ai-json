@@ -9,7 +9,6 @@ from pathlib import Path
 from dataclasses import dataclass
 import subprocess
 import json
-import tempfile
 
 
 @dataclass
@@ -43,26 +42,86 @@ class TreeDetection:
 
 
 class TreeDetectionService:
-    """Tree detection service using detectree in Docker.
+    """Tree detection service using detectree.
 
-    NOTE: Requires Docker to be installed and running.
-    Detectree has macOS compatibility issues, so we run it in a Linux container.
+    Can run in two modes:
+    1. Native mode (use_docker=False): Use detectree directly (Linux/Docker container)
+    2. Docker mode (use_docker=True): Run detectree in Docker container (macOS compatibility)
     """
 
     def __init__(
-        self, docker_image: str = "parcel-tree-detector", save_mask: bool = True
+        self,
+        use_docker: bool = True,
+        docker_image: str = "parcel-tree-detector",
+        save_mask: bool = True,
     ):
         """Initialize tree detection service.
 
         Args:
-            docker_image: Name of Docker image to use (default: parcel-tree-detector)
+            use_docker: Whether to use Docker container (default: True for macOS compatibility)
+            docker_image: Name of Docker image to use when use_docker=True
             save_mask: Whether to save tree mask as PNG for visualization
         """
+        self.use_docker = use_docker
         self.docker_image = docker_image
         self.save_mask = save_mask
+        self._clf = None
+
+    def _load_native_classifier(self):
+        """Load detectree classifier for native execution."""
+        if self._clf is not None:
+            return
+
+        try:
+            import detectree as dtr
+        except ImportError:
+            raise ImportError(
+                "Tree detection requires detectree. "
+                "Install with: pip install detectree"
+            )
+
+        self._clf = dtr.Classifier()
+
+    def _detect_native(self, img_path: Path) -> TreeDetection:
+        """Detect trees using native detectree (not Docker)."""
+        import numpy as np
+        from PIL import Image
+
+        # Load classifier
+        self._load_native_classifier()
+
+        # Load and convert to RGB
+        img = Image.open(img_path)
+        img_rgb = img.convert("RGB")
+
+        # Run detectree
+        y_pred = self._clf.predict_img(np.array(img_rgb))
+
+        # Save tree mask as PNG with green trees on transparent background
+        tree_mask_path = None
+        if self.save_mask:
+            mask_rgba = np.zeros((y_pred.shape[0], y_pred.shape[1], 4), dtype=np.uint8)
+            mask_rgba[y_pred == 1] = [0, 255, 0, 180]  # Green with 70% opacity
+            mask_img = Image.fromarray(mask_rgba, "RGBA")
+            tree_mask_path = str(img_path.parent / f"{img_path.stem}_tree_mask.png")
+            mask_img.save(tree_mask_path)
+
+        # Calculate statistics
+        tree_pixels = int(np.sum(y_pred))
+        total_pixels = int(y_pred.size)
+        coverage_percent = float(100 * tree_pixels / total_pixels)
+
+        return TreeDetection(
+            tree_pixel_count=tree_pixels,
+            total_pixels=total_pixels,
+            tree_coverage_percent=coverage_percent,
+            width=int(y_pred.shape[1]),
+            height=int(y_pred.shape[0]),
+            tree_mask_path=tree_mask_path if self.save_mask else None,
+        )
 
     def detect_trees(self, satellite_image: Dict) -> TreeDetection:
-        """Detect trees in satellite image using Docker.
+        """Detect trees in satellite image.
 
         Args:
             satellite_image: Dict with keys:
@@ -72,11 +131,15 @@ class TreeDetectionService:
             TreeDetection with tree coverage statistics
 
         Raises:
-            RuntimeError: If Docker is not available or detection fails
+            RuntimeError: If detection fails
         """
         img_path = Path(satellite_image["path"])
         if not img_path.exists():
             raise FileNotFoundError(f"Image not found: {img_path}")
+
+        # Use native detection if use_docker=False
+        if not self.use_docker:
+            return self._detect_native(img_path)
 
         # Prepare output path for tree mask
         tree_mask_path = None

@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples
+.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples docker-build docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
 
 # Default target
 .DEFAULT_GOAL := help
@@ -11,6 +11,12 @@ PIP := $(VENV_BIN)/pip
 PYTEST := $(VENV_BIN)/pytest
 PYTHONPATH := .
 PROJECT_VERSION := $(shell $(PYTHON) -W ignore setup.py --version)
+
+# Docker configuration
+DOCKER_IMAGE := parcel-ai-json
+DOCKER_TAG := latest
+DOCKER_REGISTRY := # Set to your registry (e.g., account.dkr.ecr.us-west-2.amazonaws.com)
+DOCKER_PORT := 8000
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -103,3 +109,77 @@ tag: ## Create and push git tag for current version (must be on master)
 	git tag -a v$(PROJECT_VERSION) -m '$(PROJECT_VERSION) Release'
 	git push --tags
 	@echo "Tag v$(PROJECT_VERSION) created and pushed"
+
+# Docker targets (RECOMMENDED DEPLOYMENT METHOD)
+
+docker-build: ## Build Docker image
+	@echo "Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)..."
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	@echo "Docker image built successfully!"
+	@echo "Run 'make docker-run' to start the service"
+
+docker-run: ## Run Docker container locally
+	@echo "Starting $(DOCKER_IMAGE) on port $(DOCKER_PORT)..."
+	docker run -d \
+		--name $(DOCKER_IMAGE) \
+		-p $(DOCKER_PORT):8000 \
+		$(DOCKER_IMAGE):$(DOCKER_TAG)
+	@echo ""
+	@echo "Service started!"
+	@echo "  API:      http://localhost:$(DOCKER_PORT)"
+	@echo "  Docs:     http://localhost:$(DOCKER_PORT)/docs"
+	@echo "  Health:   http://localhost:$(DOCKER_PORT)/health"
+	@echo ""
+	@echo "View logs:  make docker-logs"
+	@echo "Stop:       make docker-stop"
+
+docker-stop: ## Stop and remove Docker container
+	@echo "Stopping $(DOCKER_IMAGE)..."
+	docker stop $(DOCKER_IMAGE) 2>/dev/null || true
+	docker rm $(DOCKER_IMAGE) 2>/dev/null || true
+	@echo "Container stopped and removed"
+
+docker-logs: ## Show Docker container logs
+	docker logs -f $(DOCKER_IMAGE)
+
+docker-shell: ## Open shell in running Docker container
+	docker exec -it $(DOCKER_IMAGE) /bin/bash
+
+docker-push: ## Push Docker image to registry (requires DOCKER_REGISTRY to be set)
+	@if [ -z "$(DOCKER_REGISTRY)" ]; then \
+		echo "Error: DOCKER_REGISTRY not set. Set it in Makefile or use:"; \
+		echo "  make docker-push DOCKER_REGISTRY=your-registry.com"; \
+		exit 1; \
+	fi
+	@echo "Tagging image for registry..."
+	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker tag $(DOCKER_IMAGE):$(DOCKER_TAG) $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):v$(PROJECT_VERSION)
+	@echo "Pushing to registry..."
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):v$(PROJECT_VERSION)
+	@echo "Image pushed successfully!"
+
+docker-clean: ## Remove Docker image and clean build cache
+	docker rmi $(DOCKER_IMAGE):$(DOCKER_TAG) 2>/dev/null || true
+	docker image prune -f
+	@echo "Docker images cleaned"
+
+docker-up: ## Start services with Docker Compose
+	@echo "Starting services with Docker Compose..."
+	docker-compose up -d
+	@echo ""
+	@echo "Services started!"
+	@echo "  API:      http://localhost:8000"
+	@echo "  Docs:     http://localhost:8000/docs"
+	@echo ""
+	@echo "View logs:  docker-compose logs -f"
+	@echo "Stop:       make docker-down"
+
+docker-down: ## Stop Docker Compose services
+	@echo "Stopping Docker Compose services..."
+	docker-compose down
+	@echo "Services stopped"
+
+docker-restart: docker-stop docker-run ## Restart Docker container
+
+docker-rebuild: docker-stop docker-build docker-run ## Rebuild and restart Docker container

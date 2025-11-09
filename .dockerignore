@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Documentation
+docs/
+
+# Output and examples (too large)
+output/
+examples/
+folium_maps/
+
+# YOLO models (will be downloaded in container)
+*.pt
+
+# Tree masks
+*_tree_mask.png
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+
+# Docker
+Dockerfile*
+docker-compose.yml
+.dockerignore

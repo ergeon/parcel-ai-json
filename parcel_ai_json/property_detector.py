@@ -9,7 +9,6 @@ Uses YOLOv8-OBB model trained on DOTA aerial dataset.
 """
 
 from typing import List, Dict, Optional
-from pathlib import Path
 from dataclasses import dataclass
 
 from parcel_ai_json.vehicle_detector import VehicleDetectionService, VehicleDetection
@@ -79,6 +78,7 @@ class PropertyDetectionService:
         pool_confidence: float = 0.3,
         amenity_confidence: float = 0.3,
         device: str = "cpu",
+        tree_use_docker: bool = True,
         tree_docker_image: str = "parcel-tree-detector",
     ):
         """Initialize property detection service.
@@ -89,7 +89,8 @@ class PropertyDetectionService:
             pool_confidence: Minimum confidence for pools (0.0-1.0)
             amenity_confidence: Minimum confidence for amenities (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
-            tree_docker_image: Docker image for tree detection
+            tree_use_docker: Whether to use Docker for tree detection (False for native)
+            tree_docker_image: Docker image for tree detection (when tree_use_docker=True)
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -110,8 +111,10 @@ class PropertyDetectionService:
             device=device,
         )
 
-        # Tree detection (requires Docker)
-        self.tree_detector = TreeDetectionService(docker_image=tree_docker_image)
+        # Tree detection
+        self.tree_detector = TreeDetectionService(
+            use_docker=tree_use_docker, docker_image=tree_docker_image
+        )
 
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:
         """Detect all property features in satellite image.

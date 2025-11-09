@@ -14,43 +14,166 @@ Unified property detection for satellite imagery with GeoJSON output.
 - **Standalone**: Works independently - no dependency on parcel-geojson
 - **Interactive Maps**: Generate Folium visualizations with satellite overlay
 
-## Installation
+## Deployment
 
-### From Ergeon Internal PyPI (Production)
+### Docker Deployment (Recommended)
+
+The recommended deployment method is using Docker, which bundles all dependencies including PyTorch, YOLOv8, detectree, and the FastAPI service into a single container.
+
+**Quick Start:**
 
 ```bash
-# Install from internal PyPI server
-pip install parcel-ai-json --extra-index-url=https://erg-bot:q8zgdmot3@pypi.ergeon.in/simple/
+# Build the Docker image
+docker build -t parcel-ai-json:latest .
+
+# Run the service
+docker run -p 8000:8000 parcel-ai-json:latest
+
+# Or use Docker Compose
+docker-compose up -d
 ```
 
-### From GitHub (Development)
+The API will be available at `http://localhost:8000`
+
+**API Documentation:**
+- Interactive docs: http://localhost:8000/docs
+- OpenAPI schema: http://localhost:8000/openapi.json
+- Health check: http://localhost:8000/health
+
+### Using the Docker API
+
+**Detect all features:**
 
 ```bash
-# Install from GitHub
+curl -X POST http://localhost:8000/detect \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "zoom_level=20" \
+  -F "format=geojson"
+```
+
+**Get summary statistics only:**
+
+```bash
+curl -X POST http://localhost:8000/detect \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "format=summary"
+```
+
+**Response (summary format):**
+```json
+{
+  "vehicles": 5,
+  "swimming_pools": 1,
+  "amenities": {"tennis court": 2},
+  "total_amenities": 2,
+  "tree_coverage_percent": 12.3
+}
+```
+
+**Detect specific features:**
+
+```bash
+# Vehicles only
+curl -X POST http://localhost:8000/detect/vehicles \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194"
+
+# Pools only
+curl -X POST http://localhost:8000/detect/pools \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194"
+
+# Amenities only
+curl -X POST http://localhost:8000/detect/amenities \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194"
+
+# Tree coverage only
+curl -X POST http://localhost:8000/detect/trees \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194"
+```
+
+### Production Deployment
+
+**AWS ECS/Fargate:**
+
+```bash
+# Tag and push to ECR
+docker tag parcel-ai-json:latest <account>.dkr.ecr.us-west-2.amazonaws.com/parcel-ai-json:latest
+docker push <account>.dkr.ecr.us-west-2.amazonaws.com/parcel-ai-json:latest
+
+# Deploy via ECS task definition
+```
+
+**Kubernetes:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parcel-ai-json
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: parcel-ai-json
+  template:
+    metadata:
+      labels:
+        app: parcel-ai-json
+    spec:
+      containers:
+      - name: api
+        image: parcel-ai-json:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: parcel-ai-json
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: parcel-ai-json
+```
+
+### Python Package Installation (Legacy)
+
+If you need to use the package as a Python library (not recommended for production):
+
+```bash
+# From internal PyPI server
+pip install parcel-ai-json --extra-index-url=https://erg-bot:q8zgdmot3@pypi.ergeon.in/simple/
+
+# From GitHub
 pip install git+https://github.com/ergeon/parcel-ai-json.git
 
-# Or local development installation
+# Local development
 cd parcel-ai-json
 pip install -e ".[dev]"
 ```
 
-This will install PyTorch (~500MB) and Ultralytics for vehicle detection.
-
-### Tree Detection Setup (Required)
-
-Tree detection requires Docker to run the detectree library in a Linux container:
-
-```bash
-# Build Docker image for tree detection
-docker build -f Dockerfile.tree -t parcel-tree-detector .
-
-# Test the Docker image
-docker run --rm parcel-tree-detector
-```
-
-**Why Docker?** The detectree library has C extension compatibility issues on macOS. Running it in a Linux container ensures it works reliably across all platforms.
-
-**Note:** Tree detection is automatically included in `PropertyDetectionService`. Make sure Docker is installed and the `parcel-tree-detector` image is built before using the service.
+**Note:** When using as a Python package, you must also build and run the tree detection Docker image separately (see Dockerfile.tree).
 
 ## Usage
 
@@ -163,12 +286,21 @@ vehicles = detector.detect_vehicles(satellite_image)
 
 ## Architecture
 
-**Completely standalone** - handles everything internally:
-- Vehicle detection (YOLOv8-OBB)
-- Coordinate conversion (pixel → WGS84)
+This is a **containerized microservice** with a FastAPI REST API.
+
+**Key Components:**
+- FastAPI REST API (6 endpoints)
+- YOLOv8-OBB detection (vehicles, pools, amenities)
+- detectree tree coverage analysis
+- Geodesic coordinate conversion (pyproj)
 - GeoJSON generation
 
-No dependency on parcel-geojson or any other packages.
+**Deployment:**
+- Single unified Docker container (~2-3GB)
+- Pre-bundled models (no first-run downloads)
+- Ready for Kubernetes, ECS, or Docker Compose
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.
 
 ## Performance
 
@@ -182,6 +314,8 @@ The package uses `yolov8m-obb.pt` (51MB) - YOLOv8 medium model with Oriented Bou
 **The model is automatically downloaded on first use** to `~/.ultralytics/` by the ultralytics library. This keeps the package size small (~1MB instead of ~50MB).
 
 ## Development
+
+### Python Development (Local)
 
 ```bash
 # Set up development environment
@@ -203,7 +337,64 @@ make check
 make generate-examples
 ```
 
-## Deployment
+### Docker Development
+
+```bash
+# Build Docker image
+make docker-build
+
+# Run container locally
+make docker-run
+
+# View logs
+make docker-logs
+
+# Open shell in container
+make docker-shell
+
+# Stop container
+make docker-stop
+
+# Rebuild and restart
+make docker-rebuild
+
+# Docker Compose (with live code editing)
+make docker-up
+make docker-down
+```
+
+### Available Make Commands
+
+Run `make help` to see all available commands:
+
+```
+Development:
+  install              Install package and dependencies in virtualenv
+  test                 Run tests with coverage
+  format               Format code with black
+  check                Run all checks (format, lint, test)
+  generate-examples    Generate detection examples
+
+Docker (Recommended):
+  docker-build         Build Docker image
+  docker-run           Run Docker container locally
+  docker-stop          Stop and remove Docker container
+  docker-logs          Show Docker container logs
+  docker-shell         Open shell in running container
+  docker-up            Start services with Docker Compose
+  docker-down          Stop Docker Compose services
+  docker-rebuild       Rebuild and restart Docker container
+  docker-push          Push Docker image to registry
+
+Package (Legacy):
+  build                Build source and wheel distributions
+  deploy               Build and deploy package to internal PyPI
+  tag                  Create and push git tag
+```
+
+## Package Deployment (Legacy PyPI)
+
+For legacy PyPI deployment (not recommended - use Docker instead):
 
 ```bash
 # Build package

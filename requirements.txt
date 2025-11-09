@@ -9,6 +9,14 @@ torch>=2.0.0            # PyTorch for YOLO
 torchvision>=0.15.0
 pyproj>=3.0.0           # Geodesic coordinate transformations
 
+# Tree detection (Docker environment only)
+detectree>=1.1.0
+
+# API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
 # Optional: Visualization (folium maps)
 # folium>=0.14.0
 
