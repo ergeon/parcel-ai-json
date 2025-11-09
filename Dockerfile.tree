@@ -1,0 +1,37 @@
+# Dockerfile for tree detection service using detectree
+# Use Linux base to avoid macOS compatibility issues
+
+FROM python:3.12-slim
+
+# Install system dependencies for OpenCV and GDAL
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libgdal-dev \
+    gdal-bin \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install detectree (works fine on Linux)
+RUN pip install --no-cache-dir detectree
+
+# Copy application code
+COPY parcel_ai_json/ ./parcel_ai_json/
+COPY scripts/ ./scripts/
+
+# Expose port for API (if needed later)
+EXPOSE 8000
+
+# Default command runs tree detection test
+CMD ["python", "-c", "import detectree as dtr; print('Detectree loaded successfully'); clf = dtr.Classifier(); print('Classifier ready')"]
