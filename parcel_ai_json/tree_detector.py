@@ -102,21 +102,27 @@ class TreeDetectionService:
         save_mask: bool = True,
         extract_polygons: bool = False,
         min_tree_area_pixels: int = 50,
+        simplify_tolerance_meters: float = 0.5,
     ):
         """Initialize tree detection service.
 
         Args:
-            use_docker: Whether to use Docker container (default: True for macOS compatibility)
-            docker_image: Name of Docker image to use when use_docker=True
-            save_mask: Whether to save tree mask as PNG for visualization
-            extract_polygons: Whether to extract individual tree cluster polygons
-            min_tree_area_pixels: Minimum area in pixels for tree clusters (default: 50)
+            use_docker: Whether to use Docker container
+                (default: True for macOS compatibility)
+            docker_image: Name of Docker image (when use_docker=True)
+            save_mask: Whether to save tree mask as PNG
+            extract_polygons: Whether to extract tree cluster polygons
+            min_tree_area_pixels: Min area in pixels for clusters (default: 50)
+            simplify_tolerance_meters: Tolerance in meters for polygon
+                simplification using Shapely's topology-preserving algorithm
+                (default: 0.5m). Set to 0.0 to disable simplification.
         """
         self.use_docker = use_docker
         self.docker_image = docker_image
         self.save_mask = save_mask
         self.extract_polygons = extract_polygons
         self.min_tree_area_pixels = min_tree_area_pixels
+        self.simplify_tolerance_meters = simplify_tolerance_meters
         self._clf = None
 
     def _load_native_classifier(self):
@@ -202,6 +208,28 @@ class TreeDetectionService:
             for x, y in pixel_polygon:
                 lon, lat = converter.pixel_to_geo(float(x), float(y))
                 geo_polygon.append((lon, lat))
+
+            # Simplify polygon if tolerance is set
+            if self.simplify_tolerance_meters > 0:
+                from shapely.geometry import Polygon
+                from shapely import simplify
+
+                # Create Shapely polygon
+                # (exclude closing point for construction)
+                shapely_poly = Polygon(geo_polygon[:-1])
+
+                # Simplify using Shapely's topology-preserving algorithm
+                # Convert meters to approximate degrees
+                # At equator: 1 degree ≈ 111,320 meters
+                tolerance_degrees = self.simplify_tolerance_meters / 111320.0
+                simplified_poly = simplify(
+                    shapely_poly,
+                    tolerance_degrees,
+                    preserve_topology=True,
+                )
+
+                # Extract coordinates from simplified polygon
+                geo_polygon = list(simplified_poly.exterior.coords)
 
             # Calculate area in square meters using geodesic calculations
             # For polygons, we use the geod.polygon_area_perimeter method

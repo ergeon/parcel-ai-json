@@ -341,6 +341,97 @@ class TestTreeDetectionService(unittest.TestCase):
                 if tmp_path.exists():
                     tmp_path.unlink()
 
+    def test_polygon_simplification(self):
+        """Test polygon simplification reduces vertex count."""
+        service = TreeDetectionService(
+            use_docker=False, simplify_tolerance_meters=1.0
+        )
+
+        # Create a complex polygon with many vertices
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        # Create irregular shape
+        mask[20:80, 20:80] = 1
+
+        satellite_image = {
+            "center_lat": 37.7749,
+            "center_lon": -122.4194,
+            "zoom_level": 20,
+        }
+
+        polygons = service._extract_tree_polygons(
+            mask, satellite_image, image_width=100, image_height=100
+        )
+
+        # Should have simplified polygon
+        self.assertEqual(len(polygons), 1)
+        # Simplified polygon should have fewer vertices than original
+        # (exact number depends on simplification algorithm)
+        self.assertLess(len(polygons[0].geo_polygon), 100)
+
+    def test_polygon_simplification_disabled(self):
+        """Test that simplification can be disabled."""
+        service = TreeDetectionService(
+            use_docker=False, simplify_tolerance_meters=0.0
+        )
+
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[20:80, 20:80] = 1
+
+        satellite_image = {
+            "center_lat": 37.7749,
+            "center_lon": -122.4194,
+            "zoom_level": 20,
+        }
+
+        polygons_no_simplify = service._extract_tree_polygons(
+            mask, satellite_image, image_width=100, image_height=100
+        )
+
+        # Now with simplification
+        service_simplified = TreeDetectionService(
+            use_docker=False, simplify_tolerance_meters=1.0
+        )
+        polygons_simplified = service_simplified._extract_tree_polygons(
+            mask, satellite_image, image_width=100, image_height=100
+        )
+
+        # Simplified should have fewer or equal vertices
+        self.assertLessEqual(
+            len(polygons_simplified[0].geo_polygon),
+            len(polygons_no_simplify[0].geo_polygon),
+        )
+
+    def test_polygon_simplification_preserves_topology(self):
+        """Test that simplification preserves polygon validity."""
+        service = TreeDetectionService(
+            use_docker=False, simplify_tolerance_meters=2.0
+        )
+
+        # Create two separate tree regions
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[10:30, 10:30] = 1
+        mask[70:90, 70:90] = 1
+
+        satellite_image = {
+            "center_lat": 37.7749,
+            "center_lon": -122.4194,
+            "zoom_level": 20,
+        }
+
+        polygons = service._extract_tree_polygons(
+            mask, satellite_image, image_width=100, image_height=100
+        )
+
+        # Should still have 2 polygons after simplification
+        self.assertEqual(len(polygons), 2)
+
+        # All polygons should be valid (closed)
+        for polygon in polygons:
+            # First and last point should be the same (closed polygon)
+            self.assertEqual(
+                polygon.geo_polygon[0], polygon.geo_polygon[-1]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
