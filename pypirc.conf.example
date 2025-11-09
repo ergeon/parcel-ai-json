@@ -1,0 +1,11 @@
+# PyPI configuration for Ergeon internal server
+# Copy this file to pypirc.conf and add your credentials
+
+[distutils]
+index-servers =
+    pypi-ergeon
+
+[pypi-ergeon]
+repository = https://pypi.ergeon.in/
+username = <your-username>
+password = <your-password>

@@ -12,11 +12,25 @@ Standalone AI/ML vehicle detection for satellite imagery with GeoJSON output.
 
 ## Installation
 
+### From Ergeon Internal PyPI (Production)
+
 ```bash
-pip install parcel-ai-json
+# Install from internal PyPI server
+pip install parcel-ai-json --extra-index-url=https://erg-bot:q8zgdmot3@pypi.ergeon.in/simple/
 ```
 
-This will install PyTorch and Ultralytics for vehicle detection.
+### From GitHub (Development)
+
+```bash
+# Install from GitHub
+pip install git+https://github.com/ergeon/parcel-ai-json.git
+
+# Or local development installation
+cd parcel-ai-json
+pip install -e ".[dev]"
+```
+
+This will install PyTorch (~500MB) and Ultralytics for vehicle detection.
 
 ## Usage
 
@@ -107,17 +121,40 @@ No dependency on parcel-geojson or any other packages.
 ## Development
 
 ```bash
-# Install in development mode
-cd parcel-ai-json
-pip install -e ".[dev]"
+# Set up development environment
+make install
 
 # Run tests
-pytest tests/
+make test
 
 # Run tests with coverage
-pytest tests/ --cov=parcel_ai_json
+make coverage-html
+
+# Format code
+make format
+
+# Run all checks (format, lint, test)
+make check
+
+# Generate examples
+make generate-examples
 ```
+
+## Deployment
+
+```bash
+# Build package
+make build
+
+# Deploy to internal PyPI (requires pypirc.conf)
+make deploy
+
+# Create and push git tag
+make tag
+```
+
+See `pypirc.conf.example` for PyPI configuration.
 
 ## License
 
-MIT
+Proprietary - Ergeon Internal Use

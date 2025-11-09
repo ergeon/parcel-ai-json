@@ -51,3 +51,6 @@ output/
 # Downloaded YOLO models (keep bundled models in parcel_ai_json/models/)
 *.pt
 !parcel_ai_json/models/*.pt
+
+# Deployment credentials
+pypirc.conf
