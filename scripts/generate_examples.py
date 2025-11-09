@@ -80,25 +80,17 @@ def generate_folium_map(
     image_name,
     center_lat,
     center_lon,
-    vehicle_detections_seg=None,
-    pool_detections_seg=None,
 ):
     """Generate interactive Folium map with satellite imagery and vehicle detections.
 
     Args:
         satellite_image_path: Path to satellite image
-        geojson_data: GeoJSON data with OBB detections
+        geojson_data: GeoJSON data with detections
         output_path: Output path for HTML file
         image_name: Name of the image
         center_lat: Center latitude
         center_lon: Center longitude
-        vehicle_detections_seg: List of VehicleDetection objects with segmentation masks
-        pool_detections_seg: List of SwimmingPoolDetection objects with segmentation masks
     """
-    if vehicle_detections_seg is None:
-        vehicle_detections_seg = []
-    if pool_detections_seg is None:
-        pool_detections_seg = []
     # Get image dimensions
     from PIL import Image
 
@@ -162,14 +154,8 @@ def generate_folium_map(
         ).add_to(m)
 
     # Create feature groups for layer control
-    vehicle_obb_group = folium.FeatureGroup(name="🚗 Vehicles (OBB)", show=True)
-    pool_obb_group = folium.FeatureGroup(name="🏊 Swimming Pools (OBB)", show=True)
-    vehicle_seg_group = folium.FeatureGroup(
-        name="🚙 Vehicles (Segmentation)", show=False
-    )
-    pool_seg_group = folium.FeatureGroup(
-        name="🏊‍♂️ Swimming Pools (Segmentation)", show=False
-    )
+    vehicle_group = folium.FeatureGroup(name="🚗 Vehicles", show=True)
+    pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
 
     # Add vehicle and swimming pool detections
     vehicle_count = 0
@@ -196,8 +182,7 @@ def generate_folium_map(
             label_text = "Pool"
             fill_color = "#0099FF"  # Blue for pools
             line_color = "#0066CC"
-            obb_group = pool_obb_group
-            seg_group = pool_seg_group
+            feature_group = pool_group
         else:
             vehicle_count += 1
             vehicle_class = feature["properties"]["vehicle_class"]
@@ -212,10 +197,9 @@ def generate_folium_map(
             label_text = vehicle_class.title()
             fill_color = "#00FF00"  # Green for vehicles
             line_color = "#00AA00"
-            obb_group = vehicle_obb_group
-            seg_group = vehicle_seg_group
+            feature_group = vehicle_group
 
-        # Add OBB polygon with label
+        # Add polygon with label
         folium.Polygon(
             locations=coords_swapped,
             popup=folium.Popup(popup_html, max_width=300),
@@ -225,7 +209,7 @@ def generate_folium_map(
             weight=2,
             fillOpacity=0.4,
             opacity=0.8,
-        ).add_to(obb_group)
+        ).add_to(feature_group)
 
         # Add label marker at center of bounding box
         center_lat = sum(c[0] for c in coords_swapped) / len(coords_swapped)
@@ -245,78 +229,11 @@ def generate_folium_map(
                 ">{label_text}</div>
                 """
             ),
-        ).add_to(obb_group)
-
-        # Segmentation polygons will be added separately from actual seg detections
-        # (see code below after OBB loop)
-
-    # Add actual segmentation polygons for vehicles
-    for detection in vehicle_detections_seg:
-        # Get segmentation polygon coordinates
-        seg_coords = detection.geo_polygon
-        seg_coords_swapped = [[c[1], c[0]] for c in seg_coords]  # Swap to [lat, lon]
-
-        # Get metadata
-        vehicle_class = detection.class_name
-        confidence = detection.confidence
-        pixel_bbox = detection.pixel_bbox
-
-        popup_html = f"""
-        <b>Vehicle Detection (Segmentation)</b><br>
-        Class: {vehicle_class}<br>
-        Confidence: {confidence:.1%}<br>
-        Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]<br>
-        Points: {len(seg_coords)}
-        """
-        tooltip_text = f"{vehicle_class} - SEG ({confidence:.1%})"
-
-        folium.Polygon(
-            locations=seg_coords_swapped,
-            popup=folium.Popup(popup_html, max_width=300),
-            tooltip=tooltip_text,
-            fillColor="#00FF00",  # Green for vehicles
-            color="#00AA00",
-            weight=1,
-            fillOpacity=0.6,
-            opacity=0.9,
-        ).add_to(vehicle_seg_group)
-
-    # Add actual segmentation polygons for swimming pools
-    for detection in pool_detections_seg:
-        # Get segmentation polygon coordinates
-        seg_coords = detection.geo_polygon
-        seg_coords_swapped = [[c[1], c[0]] for c in seg_coords]  # Swap to [lat, lon]
-
-        # Get metadata
-        confidence = detection.confidence
-        area_sqm = detection.area_sqm
-        pixel_bbox = detection.pixel_bbox
-
-        popup_html = f"""
-        <b>Swimming Pool Detection (Segmentation)</b><br>
-        Confidence: {confidence:.1%}<br>
-        Area: {area_sqm:.1f} m²<br>
-        Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]<br>
-        Points: {len(seg_coords)}
-        """
-        tooltip_text = f"Swimming Pool - SEG ({confidence:.1%})"
-
-        folium.Polygon(
-            locations=seg_coords_swapped,
-            popup=folium.Popup(popup_html, max_width=300),
-            tooltip=tooltip_text,
-            fillColor="#0099FF",  # Blue for pools
-            color="#0066CC",
-            weight=1,
-            fillOpacity=0.6,
-            opacity=0.9,
-        ).add_to(pool_seg_group)
+        ).add_to(feature_group)
 
     # Add all feature groups to map
-    vehicle_obb_group.add_to(m)
-    pool_obb_group.add_to(m)
-    vehicle_seg_group.add_to(m)
-    pool_seg_group.add_to(m)
+    vehicle_group.add_to(m)
+    pool_group.add_to(m)
 
     # Add layer control with checkboxes
     folium.LayerControl(collapsed=False).add_to(m)
@@ -552,27 +469,15 @@ def generate_examples(num_examples=20):
 
     # Initialize detectors with aerial imagery model (auto-downloads yolov8m-obb.pt)
     print("\nInitializing detectors...")
-    print("  OBB: yolov8m-obb.pt (for oriented bounding boxes)")
-    print("  SEG: yolov8m-seg.pt (for segmentation masks)")
+    print("  Model: yolov8m-obb.pt (oriented bounding boxes)")
     print("  Models will be downloaded to ~/.ultralytics/ on first use")
 
     from parcel_ai_json import SwimmingPoolDetectionService
 
-    # OBB detectors
-    vehicle_detector_obb = VehicleDetectionService(
-        model_type="obb", confidence_threshold=0.25
-    )
-    pool_detector_obb = SwimmingPoolDetectionService(confidence_threshold=0.3)
+    vehicle_detector = VehicleDetectionService(confidence_threshold=0.25)
+    pool_detector = SwimmingPoolDetectionService(confidence_threshold=0.3)
 
-    # Segmentation detectors
-    vehicle_detector_seg = VehicleDetectionService(
-        model_type="seg", confidence_threshold=0.25
-    )
-    pool_detector_seg = SwimmingPoolDetectionService(
-        model_path="yolov8m-seg.pt", confidence_threshold=0.3
-    )
-
-    print("✓ Detectors initialized (OBB + Segmentation for vehicles and pools)")
+    print("✓ Detectors initialized (vehicles and swimming pools)")
 
     # Get list of available satellite images
     satellite_images = list(satellite_dir.glob("*.jpg"))
@@ -626,42 +531,23 @@ def generate_examples(num_examples=20):
                 "zoom_level": 20,
             }
 
-            # Detect vehicles and swimming pools with OBB
-            vehicle_detections_obb = vehicle_detector_obb.detect_vehicles(
-                satellite_image
-            )
-            pool_detections_obb = pool_detector_obb.detect_swimming_pools(
-                satellite_image
-            )
+            # Detect vehicles and swimming pools
+            vehicle_detections = vehicle_detector.detect_vehicles(satellite_image)
+            pool_detections = pool_detector.detect_swimming_pools(satellite_image)
 
-            # Detect vehicles and swimming pools with Segmentation
-            vehicle_detections_seg = vehicle_detector_seg.detect_vehicles(
-                satellite_image
-            )
-            pool_detections_seg = pool_detector_seg.detect_swimming_pools(
-                satellite_image
-            )
+            # Generate GeoJSON
+            vehicle_geojson = vehicle_detector.detect_vehicles_geojson(satellite_image)
+            pool_geojson = pool_detector.detect_swimming_pools_geojson(satellite_image)
 
-            # Generate GeoJSON for OBB (for file output)
-            vehicle_geojson_obb = vehicle_detector_obb.detect_vehicles_geojson(
-                satellite_image
-            )
-            pool_geojson_obb = pool_detector_obb.detect_swimming_pools_geojson(
-                satellite_image
-            )
-
-            # Merge OBB GeoJSON features (for file output)
+            # Merge GeoJSON features
             combined_geojson = {
                 "type": "FeatureCollection",
-                "features": vehicle_geojson_obb["features"]
-                + pool_geojson_obb["features"],
+                "features": vehicle_geojson["features"] + pool_geojson["features"],
             }
 
             print(
-                f"  ✓ OBB: {len(vehicle_detections_obb)} vehicles, "
-                f"{len(pool_detections_obb)} pools | "
-                f"SEG: {len(vehicle_detections_seg)} vehicles, "
-                f"{len(pool_detections_seg)} pools"
+                f"  ✓ Detected: {len(vehicle_detections)} vehicles, "
+                f"{len(pool_detections)} swimming pools"
             )
 
             # Save to geojson subdirectory
@@ -679,13 +565,11 @@ def generate_examples(num_examples=20):
             results.append(
                 {
                     "image": img_name,
-                    "vehicles_detected": len(vehicle_detections_obb),
-                    "pools_detected": len(pool_detections_obb),
+                    "vehicles_detected": len(vehicle_detections),
+                    "pools_detected": len(pool_detections),
                     "output_file": output_filename,
                     "coordinates": {"lat": lat, "lon": lon},
                     "geojson": combined_geojson,
-                    "vehicle_detections_seg": vehicle_detections_seg,
-                    "pool_detections_seg": pool_detections_seg,
                 }
             )
 
@@ -769,7 +653,7 @@ def generate_examples(num_examples=20):
         with open(geojson_file, "r") as f:
             geojson_data = json.load(f)
 
-        # Generate Folium map with segmentation data
+        # Generate Folium map
         folium_path = folium_dir / f"{Path(img_name).stem}.html"
         generate_folium_map(
             satellite_image_path=sat_img,
@@ -778,8 +662,6 @@ def generate_examples(num_examples=20):
             image_name=img_name,
             center_lat=result["coordinates"]["lat"],
             center_lon=result["coordinates"]["lon"],
-            vehicle_detections_seg=result.get("vehicle_detections_seg", []),
-            pool_detections_seg=result.get("pool_detections_seg", []),
         )
 
     print(f"✓ Generated {len(results)} Folium maps in: {folium_dir}")
