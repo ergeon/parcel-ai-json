@@ -133,28 +133,49 @@ def generate_folium_map(
             name="Satellite Imagery",
         ).add_to(m)
 
-    # Add vehicle detections
+    # Add vehicle and swimming pool detections
+    vehicle_count = 0
+    pool_count = 0
+
     for feature in geojson_data["features"]:
         coords = feature["geometry"]["coordinates"][0]
         coords_swapped = [[c[1], c[0]] for c in coords]  # Swap to [lat, lon]
 
-        vehicle_class = feature["properties"]["vehicle_class"]
+        feature_type = feature["properties"].get("feature_type", "vehicle")
         confidence = feature["properties"]["confidence"]
         pixel_bbox = feature["properties"]["pixel_bbox"]
 
-        popup_html = f"""
-        <b>Vehicle Detection</b><br>
-        Class: {vehicle_class}<br>
-        Confidence: {confidence:.1%}<br>
-        Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
-        """
+        if feature_type == "swimming_pool":
+            pool_count += 1
+            area_sqm = feature["properties"]["area_sqm"]
+            popup_html = f"""
+            <b>Swimming Pool Detection</b><br>
+            Confidence: {confidence:.1%}<br>
+            Area: {area_sqm:.1f} m²<br>
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            """
+            tooltip_text = f"Swimming Pool ({confidence:.1%})"
+            fill_color = "#0099FF"  # Blue for pools
+            line_color = "#0066CC"
+        else:
+            vehicle_count += 1
+            vehicle_class = feature["properties"]["vehicle_class"]
+            popup_html = f"""
+            <b>Vehicle Detection</b><br>
+            Class: {vehicle_class}<br>
+            Confidence: {confidence:.1%}<br>
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            """
+            tooltip_text = f"{vehicle_class} ({confidence:.1%})"
+            fill_color = "#00FF00"  # Green for vehicles
+            line_color = "#00AA00"
 
         folium.Polygon(
             locations=coords_swapped,
             popup=folium.Popup(popup_html, max_width=300),
-            tooltip=f"{vehicle_class} ({confidence:.1%})",
-            fillColor="#00FF00",
-            color="#00AA00",
+            tooltip=tooltip_text,
+            fillColor=fill_color,
+            color=line_color,
             weight=2,
             fillOpacity=0.4,
             opacity=0.8,
@@ -167,7 +188,7 @@ def generate_folium_map(
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles Detected:</b> {len(geojson_data['features'])}
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Swimming Pools:</b> {pool_count}
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -266,23 +287,32 @@ def generate_html_visualization(results, output_dir):
     </style>
 </head>
 <body>
-    <h1>🚗 Vehicle Detection Examples</h1>
+    <h1>🚗🏊 AI Detection Examples</h1>
     <div class="stats">
         <p><strong>Model:</strong> YOLOv8m-OBB (Oriented Bounding Boxes for Aerial Imagery)</p>
         <p><strong>Total Processed:</strong> {total_processed} images</p>
-        <p><strong>Total Vehicles Detected:</strong> {total_vehicles}</p>
+        <p><strong>Total Vehicles:</strong> {total_vehicles} | <strong>Total Pools:</strong> {total_pools}</p>
     </div>
     <div class="grid">
 """
 
     for result in results:
         vehicle_count = result["vehicles_detected"]
-        count_class = "vehicles" if vehicle_count > 0 else "no-vehicles"
-        count_text = (
-            f"{vehicle_count} vehicle{'s' if vehicle_count != 1 else ''}"
-            if vehicle_count > 0
-            else "No vehicles"
-        )
+        pool_count = result["pools_detected"]
+        has_detections = vehicle_count > 0 or pool_count > 0
+        count_class = "vehicles" if has_detections else "no-vehicles"
+
+        detection_parts = []
+        if vehicle_count > 0:
+            detection_parts.append(
+                f"{vehicle_count} vehicle{'s' if vehicle_count != 1 else ''}"
+            )
+        if pool_count > 0:
+            detection_parts.append(
+                f"{pool_count} pool{'s' if pool_count != 1 else ''}"
+            )
+
+        count_text = ", ".join(detection_parts) if detection_parts else "No detections"
 
         html_content += f"""
         <div class="example">
@@ -382,13 +412,19 @@ def generate_examples(num_examples=20):
         coords_map = load_quote_coordinates(quotes_csv)
         print(f"✓ Loaded {len(coords_map)} quote coordinates")
 
-    # Initialize detector with aerial imagery model (auto-downloads yolov8m-obb.pt)
-    print("\nInitializing vehicle detector...")
+    # Initialize detectors with aerial imagery model (auto-downloads yolov8m-obb.pt)
+    print("\nInitializing detectors...")
     print("  Using yolov8m-obb.pt (will be downloaded to ~/.ultralytics/ on first use)")
-    detector = VehicleDetectionService(
+
+    from parcel_ai_json import SwimmingPoolDetectionService
+
+    vehicle_detector = VehicleDetectionService(
         confidence_threshold=0.25  # Uses default yolov8m-obb.pt model
     )
-    print("✓ Detector initialized")
+    pool_detector = SwimmingPoolDetectionService(
+        confidence_threshold=0.3  # Slightly higher threshold for pools
+    )
+    print("✓ Detectors initialized (vehicles + swimming pools)")
 
     # Get list of available satellite images
     satellite_images = list(satellite_dir.glob("*.jpg"))
@@ -413,6 +449,12 @@ def generate_examples(num_examples=20):
             # Parse address from filename
             address_info = parse_address_from_filename(img_name)
 
+            # Skip if address parsing failed
+            if address_info is None:
+                print(f"  ⚠ Skipping (unable to parse filename)")
+                skipped += 1
+                continue
+
             # Try to extract state code (usually second-to-last or last part)
             parts = address_info["parts"]
             state_code = None
@@ -436,32 +478,45 @@ def generate_examples(num_examples=20):
                 "zoom_level": 20,
             }
 
-            # Detect vehicles
-            detections = detector.detect_vehicles(satellite_image)
+            # Detect vehicles and swimming pools
+            vehicle_detections = vehicle_detector.detect_vehicles(satellite_image)
+            pool_detections = pool_detector.detect_swimming_pools(satellite_image)
 
-            # Generate GeoJSON
-            geojson = detector.detect_vehicles_geojson(satellite_image)
+            # Generate GeoJSON for both
+            vehicle_geojson = vehicle_detector.detect_vehicles_geojson(satellite_image)
+            pool_geojson = pool_detector.detect_swimming_pools_geojson(satellite_image)
 
-            print(f"  ✓ Detected {len(detections)} vehicles")
+            # Merge GeoJSON features
+            combined_geojson = {
+                "type": "FeatureCollection",
+                "features": vehicle_geojson["features"] + pool_geojson["features"],
+            }
+
+            print(
+                f"  ✓ Detected {len(vehicle_detections)} vehicles, "
+                f"{len(pool_detections)} swimming pools"
+            )
 
             # Save to geojson subdirectory
             geojson_dir = output_dir / "geojson"
             geojson_dir.mkdir(exist_ok=True)
 
-            output_filename = img_path.stem + "_vehicles.geojson"
+            output_filename = img_path.stem + "_detections.geojson"
             output_path = geojson_dir / output_filename
 
             with open(output_path, "w") as f:
-                json.dump(geojson, f, indent=2)
+                json.dump(combined_geojson, f, indent=2)
 
             print(f"  ✓ Saved to: geojson/{output_filename}")
 
             results.append(
                 {
                     "image": img_name,
-                    "vehicles_detected": len(detections),
+                    "vehicles_detected": len(vehicle_detections),
+                    "pools_detected": len(pool_detections),
                     "output_file": output_filename,
                     "coordinates": {"lat": lat, "lon": lon},
+                    "geojson": combined_geojson,
                 }
             )
 
@@ -482,7 +537,9 @@ def generate_examples(num_examples=20):
     print(f"Processed: {processed}")
     print(f"Skipped: {skipped}")
     total_vehicles = sum(r["vehicles_detected"] for r in results)
+    total_pools = sum(r["pools_detected"] for r in results)
     print(f"Total vehicles detected: {total_vehicles}")
+    print(f"Total swimming pools detected: {total_pools}")
 
     # Save results summary
     summary_path = output_dir / "summary.json"
@@ -515,9 +572,11 @@ def generate_examples(num_examples=20):
     # Generate HTML visualization
     print("\nGenerating HTML visualization...")
     html_content = generate_html_visualization(results, output_dir)
-    html_content = html_content.replace(
-        "{total_processed}", str(processed)
-    ).replace("{total_vehicles}", str(total_vehicles))
+    html_content = (
+        html_content.replace("{total_processed}", str(processed))
+        .replace("{total_vehicles}", str(total_vehicles))
+        .replace("{total_pools}", str(total_pools))
+    )
 
     html_path = output_dir / "index.html"
     with open(html_path, "w") as f:
