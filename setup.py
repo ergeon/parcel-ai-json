@@ -35,6 +35,7 @@ setup(
         "numpy>=1.20.0",
         "torch>=2.0.0",            # PyTorch for YOLO
         "torchvision>=0.15.0",
+        "pyproj>=3.0.0",           # Geodesic coordinate transformations
     ],
     extras_require={
         "dev": [

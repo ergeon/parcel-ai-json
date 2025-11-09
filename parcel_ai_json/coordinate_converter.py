@@ -1,18 +1,19 @@
 """Coordinate conversion for satellite imagery.
 
 Converts between pixel coordinates and WGS84 geographic coordinates using
-Web Mercator projection (EPSG:3857).
+geodesic calculations with pyproj for accuracy.
 """
 
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 import math
+from pyproj import CRS, Geod
 
 
 class ImageCoordinateConverter:
     """Convert between pixel coordinates and geographic coordinates.
 
-    Uses Web Mercator projection (EPSG:3857) for satellite imagery.
-    Follows Google Maps/Mapbox tile coordinate system.
+    Uses geodesic calculations via pyproj.Geod for accurate conversion.
+    Same implementation as parcel-geojson for consistency.
     """
 
     def __init__(
@@ -22,17 +23,17 @@ class ImageCoordinateConverter:
         image_width_px: int,
         image_height_px: int,
         zoom_level: int = 20,
-        meters_per_pixel: float = None,
     ):
-        """Initialize coordinate converter.
+        """Initialize converter with satellite image metadata.
+
+        Uses EXACT same formulas as parcel-geojson for consistency.
 
         Args:
-            center_lat: Center latitude of image (WGS84)
-            center_lon: Center longitude of image (WGS84)
+            center_lat: Latitude of image center
+            center_lon: Longitude of image center
             image_width_px: Image width in pixels
             image_height_px: Image height in pixels
-            zoom_level: Map zoom level (default: 20 for satellite imagery)
-            meters_per_pixel: Override automatic calculation (optional)
+            zoom_level: Google Maps zoom level (default 20)
         """
         self.center_lat = center_lat
         self.center_lon = center_lon
@@ -40,49 +41,50 @@ class ImageCoordinateConverter:
         self.image_height_px = image_height_px
         self.zoom_level = zoom_level
 
-        # Calculate meters per pixel at this zoom level and latitude
-        # Using Web Mercator projection (EPSG:3857)
-        if meters_per_pixel is not None:
-            self.meters_per_pixel = meters_per_pixel
-        else:
-            # Web Mercator formula:
-            # meters_per_pixel = (Earth circumference / 256) / (2^zoom) / cos(lat)
-            earth_circumference = 40075016.686  # meters at equator
-            self.meters_per_pixel = (
-                earth_circumference
-                / 256
-                / (2**zoom_level)
-                / math.cos(math.radians(center_lat))
-            )
+        # Initialize pyproj Geod for geodesic calculations
+        self.geod = Geod(ellps="WGS84")
+
+        # Calculate meters per pixel using EXACT same formula as serializer
+        # Get Earth's equatorial radius from WGS84 ellipsoid
+        wgs84 = CRS("EPSG:4326")
+        earth_radius = wgs84.ellipsoid.semi_major_metre
+
+        google_map_magic_const = (2 * math.pi * earth_radius) / 256
+        self.meters_per_pixel = (
+            google_map_magic_const * math.cos(center_lat * math.pi / 180)
+        ) / (2**zoom_level)
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Convert pixel coordinates to geographic coordinates (WGS84).
+        """Convert image pixel coordinates to geographic coordinates (lon, lat).
+
+        Uses geodesic calculations via pyproj.Geod for accuracy.
 
         Args:
-            pixel_x: X coordinate in pixels (0 = left edge)
-            pixel_y: Y coordinate in pixels (0 = top edge)
+            pixel_x: X coordinate in pixels (from top-left of image)
+            pixel_y: Y coordinate in pixels (from top-left of image)
 
         Returns:
             Tuple of (longitude, latitude) in WGS84
         """
-        # Calculate offset from center in pixels
-        center_x = self.image_width_px / 2
-        center_y = self.image_height_px / 2
+        # Calculate offset from image center in pixels
+        dx_pixels = pixel_x - (self.image_width_px / 2.0)
+        dy_pixels = pixel_y - (self.image_height_px / 2.0)
 
-        dx_pixels = pixel_x - center_x
-        dy_pixels = pixel_y - center_y
-
-        # Convert to meters
+        # Convert pixel offsets to meters
         dx_meters = dx_pixels * self.meters_per_pixel
-        dy_meters = -dy_pixels * self.meters_per_pixel  # Y increases downward in images
+        dy_meters = dy_pixels * self.meters_per_pixel
 
-        # Convert meters to degrees
-        # Using simple equirectangular approximation (good enough for small areas)
-        lat_offset = dy_meters / 111319.9  # meters per degree latitude
-        lon_offset = dx_meters / (111319.9 * math.cos(math.radians(self.center_lat)))
+        # Use geodesic forward calculation to find new position
+        # East/West offset (90° = East, 270° = West)
+        azimuth_ew = 90 if dx_meters >= 0 else 270
+        lon_temp, lat_temp, _ = self.geod.fwd(
+            self.center_lon, self.center_lat, azimuth_ew, abs(dx_meters)
+        )
 
-        lon = self.center_lon + lon_offset
-        lat = self.center_lat + lat_offset
+        # North/South offset from the adjusted position (0° = North, 180° = South)
+        # Note: Image Y increases downward, so positive dy_meters means South
+        azimuth_ns = 180 if dy_meters >= 0 else 0
+        lon, lat, _ = self.geod.fwd(lon_temp, lat_temp, azimuth_ns, abs(dy_meters))
 
         return (lon, lat)
 
@@ -92,13 +94,15 @@ class ImageCoordinateConverter:
         """Convert pixel bounding box to geographic polygon.
 
         Args:
-            x1, y1: Top-left corner in pixels
-            x2, y2: Bottom-right corner in pixels
+            x1: Left x coordinate
+            y1: Top y coordinate
+            x2: Right x coordinate
+            y2: Bottom y coordinate
 
         Returns:
             List of (lon, lat) tuples forming a closed polygon (5 points)
         """
-        # Convert corners to geo coordinates
+        # Convert corners
         top_left = self.pixel_to_geo(x1, y1)
         top_right = self.pixel_to_geo(x2, y1)
         bottom_right = self.pixel_to_geo(x2, y2)
@@ -106,3 +110,19 @@ class ImageCoordinateConverter:
 
         # Return closed polygon (first point repeated at end)
         return [top_left, top_right, bottom_right, bottom_left, top_left]
+
+    def get_image_bounds(self) -> Dict[str, float]:
+        """Get geographic bounds of the entire image.
+
+        Returns:
+            Dict with keys: north, south, east, west
+        """
+        top_left = self.pixel_to_geo(0, 0)
+        bottom_right = self.pixel_to_geo(self.image_width_px, self.image_height_px)
+
+        return {
+            "west": top_left[0],
+            "north": top_left[1],
+            "east": bottom_right[0],
+            "south": bottom_right[1],
+        }

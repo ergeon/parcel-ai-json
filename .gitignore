@@ -46,3 +46,8 @@ Thumbs.db
 
 # Storage (output, cache, temp)
 .storage/
+output/
+
+# Downloaded YOLO models (keep bundled models in parcel_ai_json/models/)
+*.pt
+!parcel_ai_json/models/*.pt
