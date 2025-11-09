@@ -86,16 +86,27 @@ class TreeDetectionService:
         """Detect trees using native detectree (not Docker)."""
         import numpy as np
         from PIL import Image
+        import tempfile
 
         # Load classifier
         self._load_native_classifier()
 
-        # Load and convert to RGB
+        # Load and ensure image is RGB (detectree requires 3-channel RGB)
         img = Image.open(img_path)
         img_rgb = img.convert("RGB")
 
-        # Run detectree
-        y_pred = self._clf.predict_img(np.array(img_rgb))
+        # Save as temporary RGB image for detectree
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+            tmp_path = tmp.name
+            img_rgb.save(tmp_path)
+
+        try:
+            # Run detectree - predict_img expects a file path
+            y_pred = self._clf.predict_img(tmp_path)
+        finally:
+            # Clean up temporary file
+            import os
+            os.unlink(tmp_path)
 
         # Save tree mask as PNG with green trees on transparent background
         tree_mask_path = None
