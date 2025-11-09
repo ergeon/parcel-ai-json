@@ -4,11 +4,10 @@ import pytest
 from unittest.mock import Mock, patch
 import torch
 
-from parcel_geojson.services.vehicle_detector import (
+from parcel_ai_json.vehicle_detector import (
     VehicleDetection,
     VehicleDetectionService,
 )
-from parcel_geojson.core.image_coordinates import ImageCoordinateConverter
 
 
 class TestVehicleDetection:
@@ -43,6 +42,31 @@ class TestVehicleDetection:
         assert result["geo_polygon"] == [(-122.0, 37.0), (-122.1, 37.0)]
         assert result["confidence"] == 0.75
         assert result["class_name"] == "truck"
+
+    def test_vehicle_detection_to_geojson(self):
+        """Test converting VehicleDetection to GeoJSON feature."""
+        detection = VehicleDetection(
+            pixel_bbox=(10.0, 20.0, 50.0, 60.0),
+            geo_polygon=[
+                (-122.0, 37.0),
+                (-122.1, 37.0),
+                (-122.1, 37.1),
+                (-122.0, 37.1),
+                (-122.0, 37.0),
+            ],
+            confidence=0.85,
+            class_name="car",
+        )
+
+        geojson = detection.to_geojson_feature()
+
+        assert geojson["type"] == "Feature"
+        assert geojson["geometry"]["type"] == "Polygon"
+        assert geojson["geometry"]["coordinates"] == [detection.geo_polygon]
+        assert geojson["properties"]["feature_type"] == "vehicle"
+        assert geojson["properties"]["vehicle_class"] == "car"
+        assert geojson["properties"]["confidence"] == 0.85
+        assert geojson["properties"]["pixel_bbox"] == [10.0, 20.0, 50.0, 60.0]
 
 
 class TestVehicleDetectionService:
@@ -100,7 +124,7 @@ class TestVehicleDetectionService:
         mock_yolo.assert_called_once_with("yolov8n.pt")
 
     @patch("ultralytics.YOLO")
-    @patch("parcel_geojson.services.vehicle_detector.Path")
+    @patch("parcel_ai_json.vehicle_detector.Path")
     def test_load_model_custom_path(self, mock_path, mock_yolo):
         """Test loading custom model with path validation."""
         mock_path_obj = Mock()
@@ -114,7 +138,7 @@ class TestVehicleDetectionService:
 
         mock_yolo.assert_called_once_with("/custom/model.pt")
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
+    @patch("parcel_ai_json.vehicle_detector.Path")
     def test_load_model_custom_not_found(self, mock_path):
         """Test loading custom model that doesn't exist."""
         mock_path_obj = Mock()
@@ -131,11 +155,14 @@ class TestVehicleDetectionService:
         service = VehicleDetectionService()
 
         with patch.dict("sys.modules", {"ultralytics": None}):
-            with pytest.raises(ImportError, match="Vehicle detection requires ultralytics"):
+            with pytest.raises(
+                ImportError, match="Vehicle detection requires ultralytics"
+            ):
                 service._load_model()
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_regular_bbox(self, mock_path):
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_regular_bbox(self, mock_image, mock_path):
         """Test detecting vehicles with regular bounding box model."""
         # Create service and mock the model directly
         service = VehicleDetectionService(model_path="yolov8m.pt")
@@ -148,7 +175,6 @@ class TestVehicleDetectionService:
         mock_result = Mock()
         mock_result.obb = None
         mock_result.boxes = Mock()
-        mock_result.orig_shape = (512, 512)
 
         # Create mock boxes
         mock_box = Mock()
@@ -168,27 +194,28 @@ class TestVehicleDetectionService:
         mock_path_obj.exists.return_value = True
         mock_path.return_value = mock_path_obj
 
-        # Mock coordinate converter
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-        mock_converter.image_width_px = 512
-        mock_converter.image_height_px = 512
-        mock_converter.bbox_to_polygon.return_value = [
-            (-122.0, 37.0),
-            (-122.1, 37.0),
-            (-122.1, 37.1),
-            (-122.0, 37.1),
-        ]
+        # Mock PIL Image
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
 
-        detections = service.detect_vehicles("/path/to/image.jpg", mock_converter)
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
 
         assert len(detections) == 1
         assert detections[0].class_name == "car"
         assert detections[0].confidence == pytest.approx(0.85, rel=1e-5)
         assert detections[0].pixel_bbox == (100.0, 200.0, 150.0, 250.0)
-        assert len(detections[0].geo_polygon) == 4
+        assert len(detections[0].geo_polygon) == 5  # Closed polygon
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_obb_format(self, mock_path):
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_obb_format(self, mock_image, mock_path):
         """Test detecting vehicles with OBB (Oriented Bounding Box) model."""
         # Create service and mock the model directly
         service = VehicleDetectionService(model_path="yolov8m-obb.pt")
@@ -205,7 +232,6 @@ class TestVehicleDetectionService:
         mock_result.obb.xyxy = torch.tensor(
             [[50.0, 60.0, 100.0, 110.0], [200.0, 210.0, 250.0, 260.0]]
         )
-        mock_result.orig_shape = (512, 512)
 
         # Make OBB iterable and have length
         mock_result.obb.__len__ = Mock(return_value=2)
@@ -220,22 +246,30 @@ class TestVehicleDetectionService:
         mock_path_obj.exists.return_value = True
         mock_path.return_value = mock_path_obj
 
-        # Mock coordinate converter
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-        mock_converter.image_width_px = 512
-        mock_converter.image_height_px = 512
-        mock_converter.bbox_to_polygon.return_value = [(-122.0, 37.0)]
+        # Mock PIL Image
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
 
-        detections = service.detect_vehicles("/path/to/image.jpg", mock_converter)
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
 
         assert len(detections) == 2
         assert detections[0].class_name == "small vehicle"
         assert detections[0].confidence == pytest.approx(0.75, rel=1e-5)
+        assert len(detections[0].geo_polygon) == 5
         assert detections[1].class_name == "large vehicle"
         assert detections[1].confidence == pytest.approx(0.65, rel=1e-5)
+        assert len(detections[1].geo_polygon) == 5
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_filter_non_vehicles(self, mock_path):
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_filter_non_vehicles(self, mock_image, mock_path):
         """Test that non-vehicle detections are filtered out."""
         # Create service and mock the model directly
         service = VehicleDetectionService()
@@ -248,7 +282,6 @@ class TestVehicleDetectionService:
         mock_result = Mock()
         mock_result.obb = None
         mock_result.boxes = Mock()
-        mock_result.orig_shape = (512, 512)
 
         # Create mock boxes - person, car, bicycle
         mock_box_person = Mock()
@@ -275,24 +308,31 @@ class TestVehicleDetectionService:
         # Set the model directly on the service
         service._model = mock_model
 
-        # Mock file and converter
+        # Mock file
         mock_path_obj = Mock()
         mock_path_obj.exists.return_value = True
         mock_path.return_value = mock_path_obj
 
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-        mock_converter.image_width_px = 512
-        mock_converter.image_height_px = 512
-        mock_converter.bbox_to_polygon.return_value = [(-122.0, 37.0)]
+        # Mock PIL Image
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
 
-        detections = service.detect_vehicles("/path/to/image.jpg", mock_converter)
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
 
         # Should only detect the car, not person or bicycle
         assert len(detections) == 1
         assert detections[0].class_name == "car"
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_no_detections(self, mock_path):
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_no_detections(self, mock_image, mock_path):
         """Test detecting vehicles when no vehicles are found."""
         # Create service and mock the model directly
         service = VehicleDetectionService()
@@ -304,7 +344,6 @@ class TestVehicleDetectionService:
         mock_result = Mock()
         mock_result.obb = None
         mock_result.boxes = None
-        mock_result.orig_shape = (512, 512)
 
         mock_model.return_value = [mock_result]
 
@@ -315,74 +354,43 @@ class TestVehicleDetectionService:
         mock_path_obj.exists.return_value = True
         mock_path.return_value = mock_path_obj
 
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-        mock_converter.image_width_px = 512
-        mock_converter.image_height_px = 512
+        # Mock PIL Image
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
 
-        detections = service.detect_vehicles("/path/to/image.jpg", mock_converter)
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
 
         assert len(detections) == 0
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
+    @patch("parcel_ai_json.vehicle_detector.Path")
     def test_detect_vehicles_image_not_found(self, mock_path):
         """Test detecting vehicles when image file doesn't exist."""
         mock_path_obj = Mock()
         mock_path_obj.exists.return_value = False
         mock_path.return_value = mock_path_obj
 
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-
         service = VehicleDetectionService()
+
+        satellite_image = {
+            "path": "/nonexistent/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
 
         with pytest.raises(FileNotFoundError, match="Image not found"):
-            service.detect_vehicles("/nonexistent/image.jpg", mock_converter)
+            service.detect_vehicles(satellite_image)
 
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_with_scaling(self, mock_path):
-        """Test vehicle detection with image scaling."""
-        # Create service and mock the model directly
-        service = VehicleDetectionService()
-
-        # Mock the model
-        mock_model = Mock()
-        mock_model.names = {0: "car"}
-
-        # Mock detection results with different image size
-        mock_result = Mock()
-        mock_result.obb = None
-        mock_result.boxes = Mock()
-        mock_result.orig_shape = (256, 256)  # YOLO resized to 256x256
-
-        mock_box = Mock()
-        mock_box.cls = torch.tensor([0])
-        mock_box.conf = torch.tensor([0.85])
-        mock_box.xyxy = torch.tensor([[50.0, 60.0, 75.0, 85.0]])  # In 256x256 space
-
-        mock_result.boxes.__iter__ = Mock(return_value=iter([mock_box]))
-        mock_result.boxes.__len__ = Mock(return_value=1)
-        mock_model.return_value = [mock_result]
-
-        # Set the model directly on the service
-        service._model = mock_model
-
-        mock_path_obj = Mock()
-        mock_path_obj.exists.return_value = True
-        mock_path.return_value = mock_path_obj
-
-        # Original image is 512x512
-        mock_converter = Mock(spec=ImageCoordinateConverter)
-        mock_converter.image_width_px = 512
-        mock_converter.image_height_px = 512
-        mock_converter.bbox_to_polygon.return_value = [(-122.0, 37.0)]
-
-        detections = service.detect_vehicles("/path/to/image.jpg", mock_converter)
-
-        # Coordinates should be scaled by 2x
-        assert detections[0].pixel_bbox == (100.0, 120.0, 150.0, 170.0)
-
-    @patch("parcel_geojson.services.vehicle_detector.Path")
-    def test_detect_vehicles_from_metadata(self, mock_path):
-        """Test detecting vehicles from satellite image metadata."""
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_geojson(self, mock_image, mock_path):
+        """Test detect_vehicles_geojson method."""
         # Create service and mock the model directly
         service = VehicleDetectionService()
 
@@ -393,7 +401,6 @@ class TestVehicleDetectionService:
         mock_result = Mock()
         mock_result.obb = None
         mock_result.boxes = Mock()
-        mock_result.orig_shape = (512, 512)
 
         mock_box = Mock()
         mock_box.cls = torch.tensor([0])
@@ -407,20 +414,28 @@ class TestVehicleDetectionService:
         # Set the model directly on the service
         service._model = mock_model
 
-        satellite_image = {
-            "path": "/path/to/image.jpg",
-            "center_lat": 37.0,
-            "center_lon": -122.0,
-            "width_px": 512,
-            "height_px": 512,
-        }
-
         mock_path_obj = Mock()
         mock_path_obj.exists.return_value = True
         mock_path.return_value = mock_path_obj
 
-        detections = service.detect_vehicles_from_metadata(satellite_image)
+        # Mock PIL Image
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
 
-        assert len(detections) == 1
-        assert detections[0].class_name == "car"
-        assert detections[0].confidence == pytest.approx(0.85, rel=1e-5)
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        geojson = service.detect_vehicles_geojson(satellite_image)
+
+        assert geojson["type"] == "FeatureCollection"
+        assert len(geojson["features"]) == 1
+        assert geojson["features"][0]["type"] == "Feature"
+        assert geojson["features"][0]["geometry"]["type"] == "Polygon"
+        assert geojson["features"][0]["properties"]["vehicle_class"] == "car"
+        assert geojson["features"][0]["properties"]["confidence"] == pytest.approx(
+            0.85, rel=1e-5
+        )

@@ -1,30 +1,31 @@
 """Vehicle detection service for satellite imagery.
 
 Uses YOLO-based models (YOLOv8, fine-tuned for overhead/satellite views) to detect
-vehicles in satellite images and convert detections to geographic coordinates.
+vehicles in satellite images and return GeoJSON.
 """
 
-from typing import TYPE_CHECKING, List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-if TYPE_CHECKING:
-    from parcel_geojson.core.image_coordinates import ImageCoordinateConverter
+from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
 
 @dataclass
 class VehicleDetection:
-    """Represents a detected vehicle with pixel and geographic coordinates."""
+    """Represents a detected vehicle with both pixel and geographic coordinates."""
 
     # Pixel coordinates (bounding box)
     pixel_bbox: Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 
     # Geographic coordinates (polygon)
-    geo_polygon: List[Tuple[float, float]]  # [(lon, lat), ...]
+    geo_polygon: List[Tuple[float, float]] = field(
+        default_factory=list
+    )  # [(lon, lat), ...]
 
     # Detection metadata
-    confidence: float
-    class_name: str  # 'car', 'truck', 'vehicle', etc.
+    confidence: float = 0.0
+    class_name: str = ""  # 'car', 'truck', 'vehicle', etc.
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""
@@ -33,6 +34,24 @@ class VehicleDetection:
             "geo_polygon": self.geo_polygon,
             "confidence": float(self.confidence),
             "class_name": self.class_name,
+        }
+
+    def to_geojson_feature(self) -> Dict:
+        """Convert to GeoJSON feature."""
+        return {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    self.geo_polygon
+                ],  # GeoJSON polygon needs array of rings
+            },
+            "properties": {
+                "feature_type": "vehicle",
+                "vehicle_class": self.class_name,
+                "confidence": self.confidence,
+                "pixel_bbox": list(self.pixel_bbox),
+            },
         }
 
 
@@ -120,27 +139,63 @@ class VehicleDetectionService:
 
     def detect_vehicles(
         self,
-        image_path: str,
-        coord_converter: "ImageCoordinateConverter",
+        satellite_image: Dict,
     ) -> List[VehicleDetection]:
-        """Detect vehicles in satellite image and convert to geographic coordinates.
+        """Detect vehicles in satellite image and return with geographic coordinates.
 
         Args:
-            image_path: Path to satellite image file
-            coord_converter: ImageCoordinateConverter instance for pixel→geo conversion
+            satellite_image: Dict with keys:
+                - path: str (image file path)
+                - center_lat: float (center latitude WGS84)
+                - center_lon: float (center longitude WGS84)
+                - width_px: int (optional, will read from image if not provided)
+                - height_px: int (optional, will read from image if not provided)
+                - zoom_level: int (optional, default 20)
 
         Returns:
-            List of VehicleDetection objects with both pixel and geographic coordinates
+            List of VehicleDetection objects with both pixel and geo coordinates
 
         Raises:
             ImportError: If ultralytics not installed
-            FileNotFoundError: If image_path or model_path don't exist
+            FileNotFoundError: If image_path doesn't exist
         """
         self._load_model()
+
+        # Extract metadata
+        image_path = satellite_image["path"]
+        center_lat = satellite_image["center_lat"]
+        center_lon = satellite_image["center_lon"]
+        zoom_level = satellite_image.get("zoom_level", 20)
 
         # Verify image exists
         if not Path(image_path).exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
+
+        # Get image dimensions
+        width_px = satellite_image.get("width_px")
+        height_px = satellite_image.get("height_px")
+
+        if width_px is None or height_px is None:
+            # Read from image file
+            try:
+                from PIL import Image
+
+                with Image.open(image_path) as img:
+                    width_px, height_px = img.size
+            except ImportError:
+                raise ImportError(
+                    "PIL (Pillow) is required to read image dimensions. "
+                    "Install with: pip install pillow"
+                )
+
+        # Create coordinate converter
+        coord_converter = ImageCoordinateConverter(
+            center_lat=center_lat,
+            center_lon=center_lon,
+            image_width_px=width_px,
+            image_height_px=height_px,
+            zoom_level=zoom_level,
+        )
 
         # Run inference
         results = self._model(image_path, conf=self.confidence_threshold, verbose=False)
@@ -151,26 +206,13 @@ class VehicleDetectionService:
         for result in results:
             # Check if OBB model (oriented bounding boxes) or regular model
             boxes = (
-                result.obb if hasattr(result, "obb") and result.obb is not None else result.boxes
+                result.obb
+                if hasattr(result, "obb") and result.obb is not None
+                else result.boxes
             )
 
             if boxes is None or len(boxes) == 0:
                 continue
-
-            # Get the original image shape that YOLO used
-            # result.orig_shape is (height, width) of the original image
-            orig_height, orig_width = result.orig_shape
-
-            # Check if YOLO resized the image
-            if (
-                orig_width != coord_converter.image_width_px
-                or orig_height != coord_converter.image_height_px
-            ):
-                # Need to scale coordinates back to original image size
-                scale_x = coord_converter.image_width_px / orig_width
-                scale_y = coord_converter.image_height_px / orig_height
-            else:
-                scale_x = scale_y = 1.0
 
             # OBB and regular boxes have different iteration patterns
             is_obb = hasattr(result, "obb") and result.obb is not None
@@ -195,12 +237,6 @@ class VehicleDetectionService:
 
                     # Get bounding box coordinates from xyxy tensor
                     x1, y1, x2, y2 = boxes.xyxy[i].tolist()
-
-                    # Scale coordinates back to original image size if needed
-                    x1 *= scale_x
-                    y1 *= scale_y
-                    x2 *= scale_x
-                    y2 *= scale_y
 
                     # Get confidence score
                     confidence = float(boxes.conf[i].item())
@@ -230,12 +266,6 @@ class VehicleDetectionService:
                     # Get bounding box coordinates (xyxy format)
                     x1, y1, x2, y2 = box.xyxy[0].tolist()
 
-                    # Scale coordinates back to original image size if needed
-                    x1 *= scale_x
-                    y1 *= scale_y
-                    x2 *= scale_x
-                    y2 *= scale_y
-
                     # Get confidence score
                     confidence = float(box.conf[0])
 
@@ -253,59 +283,17 @@ class VehicleDetectionService:
 
         return detections
 
-    def detect_vehicles_from_metadata(
-        self,
-        satellite_image: Dict,
-    ) -> List[VehicleDetection]:
-        """Detect vehicles using satellite image metadata dict.
-
-        Convenience method that creates ImageCoordinateConverter from metadata.
+    def detect_vehicles_geojson(self, satellite_image: Dict) -> Dict:
+        """Detect vehicles and return as GeoJSON FeatureCollection.
 
         Args:
-            satellite_image: Dict with keys:
-                - path: str (image file path)
-                - center_lat: float
-                - center_lon: float
-                - width_px: int (optional, will read from image if not provided)
-                - height_px: int (optional, will read from image if not provided)
-                - zoom_level: int (optional, default 20)
+            satellite_image: Dict with satellite metadata (see detect_vehicles)
 
         Returns:
-            List of VehicleDetection objects
+            GeoJSON FeatureCollection with vehicle features
         """
-        from parcel_geojson.core.image_coordinates import ImageCoordinateConverter
+        detections = self.detect_vehicles(satellite_image)
 
-        # Extract metadata
-        image_path = satellite_image["path"]
-        center_lat = satellite_image["center_lat"]
-        center_lon = satellite_image["center_lon"]
-        zoom_level = satellite_image.get("zoom_level", 20)
+        features = [detection.to_geojson_feature() for detection in detections]
 
-        # Get image dimensions
-        width_px = satellite_image.get("width_px")
-        height_px = satellite_image.get("height_px")
-
-        if width_px is None or height_px is None:
-            # Read from image file
-            try:
-                from PIL import Image
-
-                with Image.open(image_path) as img:
-                    width_px, height_px = img.size
-            except ImportError:
-                raise ImportError(
-                    "PIL (Pillow) is required to read image dimensions. "
-                    "Install with: pip install pillow"
-                )
-
-        # Create converter
-        converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=width_px,
-            image_height_px=height_px,
-            zoom_level=zoom_level,
-        )
-
-        # Detect vehicles
-        return self.detect_vehicles(image_path, converter)
+        return {"type": "FeatureCollection", "features": features}

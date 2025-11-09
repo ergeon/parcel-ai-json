@@ -1,12 +1,13 @@
 # Parcel AI JSON
 
-AI/ML extensions for [parcel-geojson](https://github.com/ergeon/parcel-geojson).
+Standalone AI/ML vehicle detection for satellite imagery with GeoJSON output.
 
 ## Features
 
 - **Vehicle Detection**: Detect vehicles in satellite imagery using YOLOv8-OBB (trained on DOTA aerial dataset)
-- **Future**: Building detection models
-- **Future**: Fence detection models
+- **GeoJSON Output**: Returns vehicle locations as GeoJSON FeatureCollection
+- **Coordinate Conversion**: Automatic pixel → WGS84 coordinate transformation
+- **Standalone**: No external dependencies - works independently
 
 ## Installation
 
@@ -14,46 +15,84 @@ AI/ML extensions for [parcel-geojson](https://github.com/ergeon/parcel-geojson).
 pip install parcel-ai-json
 ```
 
-This will automatically install `parcel-geojson` as a dependency along with PyTorch and Ultralytics.
+This will install PyTorch and Ultralytics for vehicle detection.
 
 ## Usage
 
 ```python
-from parcel_geojson import ParcelGeoJSONGenerator
+from parcel_ai_json import VehicleDetectionService
 
-# Vehicle detection automatically enabled if parcel-ai-json is installed
-generator = ParcelGeoJSONGenerator(
-    enable_vehicle_detection=True,
-    vehicle_model_path="yolov8m-obb.pt",  # Bundled model
-    vehicle_confidence=0.25,
+# Initialize detector
+detector = VehicleDetectionService(
+    confidence_threshold=0.25,
 )
 
-geojson = generator.generate(
-    regrid_json="parcel.json",
-    building_json="building.json",
-    satellite_image={
-        "path": "satellite.jpg",
-        "center_lat": 37.7749,
-        "center_lon": -122.4194,
-    },
-)
+# Prepare satellite image metadata
+satellite_image = {
+    "path": "satellite.jpg",
+    "center_lat": 37.7749,  # Image center latitude (WGS84)
+    "center_lon": -122.4194,  # Image center longitude (WGS84)
+    "zoom_level": 20,  # Optional, default 20
+}
 
-print(f"Detected {len([f for f in geojson['features'] if f['properties']['feature_type'] == 'vehicle'])} vehicles")
+# Option 1: Get detections with pixel and geo coordinates
+detections = detector.detect_vehicles(satellite_image)
+
+for detection in detections:
+    print(f"Found {detection.class_name}")
+    print(f"  Pixel bbox: {detection.pixel_bbox}")
+    print(f"  Geo polygon: {detection.geo_polygon}")
+    print(f"  Confidence: {detection.confidence:.2%}")
+
+# Option 2: Get GeoJSON directly
+geojson = detector.detect_vehicles_geojson(satellite_image)
+
+# geojson is a FeatureCollection with vehicle features
+print(f"Detected {len(geojson['features'])} vehicles")
+
+# Save to file
+import json
+with open("vehicles.geojson", "w") as f:
+    json.dump(geojson, f, indent=2)
 ```
 
-## Why a Separate Package?
+## GeoJSON Output Format
 
-The core `parcel-geojson` package is designed to be **Lambda-compatible** (~50MB, fast startup).
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-122.419, 37.775],
+          [-122.418, 37.775],
+          [-122.418, 37.774],
+          [-122.419, 37.774],
+          [-122.419, 37.775]
+        ]]
+      },
+      "properties": {
+        "feature_type": "vehicle",
+        "vehicle_class": "car",
+        "confidence": 0.87,
+        "pixel_bbox": [245.2, 389.1, 298.6, 445.3]
+      }
+    }
+  ]
+}
+```
 
-This package (`parcel-ai-json`) includes:
-- PyTorch (~500MB)
-- YOLOv8 models (~51MB)
-- Total: ~600MB
+## Architecture
 
-**Deployment Options:**
-- **Lambda**: Use `parcel-geojson` alone (no AI features)
-- **ECS Fargate**: Install both packages for full AI capabilities
-- **Local**: Install both for development
+**Completely standalone** - handles everything internally:
+- Vehicle detection (YOLOv8-OBB)
+- Coordinate conversion (pixel → WGS84)
+- GeoJSON generation
+
+No dependency on parcel-geojson or any other packages.
 
 ## Performance
 

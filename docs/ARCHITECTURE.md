@@ -2,9 +2,12 @@
 
 ## Overview
 
-AI/ML extension package for `parcel-geojson` providing vehicle detection from satellite imagery using YOLOv8-OBB (Oriented Bounding Boxes) trained on the DOTA aerial dataset.
+Independent AI/ML package for vehicle detection in satellite imagery using YOLOv8-OBB (Oriented Bounding Boxes) trained on the DOTA aerial dataset. Returns pixel coordinates only.
 
-**Key Principle**: Separate AI/ML dependencies from core package to keep `parcel-geojson` Lambda-compatible.
+**Key Principles**:
+1. Separate AI/ML dependencies from core package to keep `parcel-geojson` Lambda-compatible
+2. **No circular dependencies**: parcel-ai-json is independent, parcel-geojson optionally imports it
+3. **Single responsibility**: This package only detects vehicles and returns pixel coords; parcel-geojson handles coordinate transformation
 
 ## Why a Separate Package?
 
@@ -43,18 +46,31 @@ parcel-ai-json/
 
 ### Integration with parcel-geojson
 
-**Import Pattern** (parcel-geojson tries to import from parcel-ai-json):
+**Dependency Direction** (one-way only):
+```
+parcel-geojson → parcel-ai-json
+   (imports)      (independent)
+```
+
+**Import Pattern** (parcel-geojson optionally imports from parcel-ai-json):
 ```python
-# In parcel_geojson/core/geojson_builder.py:194-213
+# In parcel_geojson/core/geojson_builder.py
 if self.enable_vehicle_detection and satellite_image:
     try:
-        from parcel_ai_json import VehicleDetectionService  # Try AI package first
+        from parcel_ai_json import VehicleDetectionService
+        detector = VehicleDetectionService(...)
+        detections = detector.detect_vehicles(image_path)  # Returns pixel coords
+
+        # parcel-geojson handles coordinate transformation
+        for detection in detections:
+            geo_polygon = coord_converter.bbox_to_polygon(*detection.pixel_bbox)
+            # Create GeoJSON feature with geo coordinates
     except ImportError:
         print("⚠️  Vehicle detection skipped")
         print("Install with: pip install parcel-ai-json")
 ```
 
-**Backward Compatibility**: Falls back to old location if parcel-ai-json not installed.
+**No Reverse Dependency**: parcel-ai-json does NOT import from parcel-geojson.
 
 ## Vehicle Detection Algorithm
 
@@ -75,7 +91,7 @@ if self.enable_vehicle_detection and satellite_image:
 ### Detection Pipeline
 
 ```
-Input: Satellite Image + Metadata
+Input: Satellite Image Path
     ↓
 1. Load Image (PIL/OpenCV)
     ↓
@@ -86,14 +102,17 @@ Input: Satellite Image + Metadata
     ↓
 3. Extract Detections
    - Filter by confidence
-   - Convert OBB to polygon coordinates
+   - Filter by vehicle class (car, truck, vehicle, etc.)
     ↓
-4. Transform to Geographic Coordinates
-   - Pixel coords → image coords
-   - Image coords → WGS84 (using image metadata)
+4. Create VehicleDetection Objects
+   - pixel_bbox: (x1, y1, x2, y2)
+   - confidence: float
+   - class_name: str
     ↓
-Output: List[Vehicle] entities
+Output: List[VehicleDetection] with pixel coordinates only
 ```
+
+**Note**: Geographic coordinate transformation is NOT done here - that's handled by parcel-geojson's `ImageCoordinateConverter`.
 
 ### Code Location
 
@@ -105,28 +124,23 @@ class VehicleDetectionService:
     def __init__(
         self,
         model_path: str = None,
-        confidence_threshold: float = 0.3
+        confidence_threshold: float = 0.3,
+        device: str = "cpu"
     )
 
-    def detect_vehicles_from_metadata(
+    def detect_vehicles(
         self,
-        satellite_metadata: dict
-    ) -> List[Vehicle]
+        image_path: str
+    ) -> List[VehicleDetection]
 ```
 
-**Input Format** (satellite_metadata):
+**VehicleDetection** dataclass:
 ```python
-{
-    "path": "/path/to/satellite.jpg",
-    "center_lat": 37.7749,
-    "center_lon": -122.4194,
-    "bounds": {
-        "min_latitude": 37.773,
-        "max_latitude": 37.776,
-        "min_longitude": -122.421,
-        "max_longitude": -122.417
-    }
-}
+@dataclass
+class VehicleDetection:
+    pixel_bbox: Tuple[float, float, float, float]  # (x1, y1, x2, y2)
+    confidence: float
+    class_name: str  # 'car', 'truck', 'small vehicle', 'large vehicle', etc.
 ```
 
 ### Model Performance
@@ -162,68 +176,32 @@ pip install -e ".[dev]"
 
 ### Production Installation
 
-**Option 1: With parcel-geojson from GitHub**
+**Standalone** (vehicle detection only):
 ```bash
+pip install git+https://github.com/ergeon/parcel-ai-json.git
+```
+
+**With parcel-geojson** (full GeoJSON generation):
+```bash
+# Install both packages
 pip install git+https://github.com/ergeon/parcel-geojson.git
 pip install git+https://github.com/ergeon/parcel-ai-json.git
 ```
 
-**Option 2: With parcel-geojson from private package**
-```bash
-# Configure private package index first
-pip install parcel-geojson --index-url <private-index-url>
-pip install git+https://github.com/ergeon/parcel-ai-json.git
+### No Circular Dependencies
+
+**Old Architecture** (circular dependency):
+```
+parcel-geojson ⟷ parcel-ai-json  ❌ BAD
 ```
 
-### Dependency Issue Fix
-
-**Problem**: parcel-ai-json requires `parcel-geojson>=0.1.0`, but it's not on public PyPI.
-
-**Solutions**:
-
-#### Solution 1: Install from GitHub (Recommended)
-Update `setup.py` to use git URL:
-```python
-install_requires=[
-    "parcel-geojson @ git+https://github.com/ergeon/parcel-geojson.git",
-    "ultralytics>=8.0.0",
-    "torch>=2.0.0",
-    # ...
-]
+**New Architecture** (one-way dependency):
+```
+parcel-geojson → parcel-ai-json  ✅ GOOD
+     (optional)     (independent)
 ```
 
-#### Solution 2: Make parcel-geojson Optional
-```python
-install_requires=[
-    "ultralytics>=8.0.0",
-    "torch>=2.0.0",
-    # ... other deps
-],
-extras_require={
-    "full": [
-        "parcel-geojson>=0.1.0",
-    ],
-}
-```
-
-Then install with: `pip install parcel-ai-json[full]`
-
-#### Solution 3: Document Manual Installation
-In README.md:
-```markdown
-## Installation
-
-### Prerequisites
-1. Install parcel-geojson first:
-   ```bash
-   pip install git+https://github.com/ergeon/parcel-geojson.git
-   ```
-
-2. Then install parcel-ai-json:
-   ```bash
-   pip install parcel-ai-json
-   ```
-```
+parcel-ai-json can be installed and used standalone without parcel-geojson.
 
 ## Model Details
 
@@ -417,15 +395,18 @@ service = VehicleDetectionService(model_path=model_path)
 - `ultralytics>=8.0.0`: YOLOv8 implementation (~50MB)
 - `pillow>=9.0.0`: Image loading and processing
 - `numpy>=1.20.0`: Numerical operations
-
-### Optional Dependencies
-- `parcel-geojson>=0.1.0`: Core package (required for integration)
+- `torchvision>=0.15.0`: PyTorch vision utilities
 
 ### Development Dependencies
 - `pytest>=7.0.0`: Testing framework
 - `pytest-cov>=4.0.0`: Coverage reporting
 - `black>=23.0.0`: Code formatting
 - `flake8>=6.0.0`: Linting
+
+### Integration
+- **parcel-geojson** (separate package): Optionally imports this package for vehicle detection in GeoJSON generation
+  - **Direction**: parcel-geojson → parcel-ai-json (one-way)
+  - **Relationship**: parcel-ai-json is standalone and does NOT depend on parcel-geojson
 
 ## Session Continuity
 
