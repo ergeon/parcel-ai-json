@@ -99,6 +99,26 @@ geojson = detector.detect_vehicles_geojson(satellite_image)
 - **`seg`**: Segmentation masks - Precise pixel-level outlines (COCO dataset)
 - **`bbox`**: Regular axis-aligned bounding boxes
 
+## Driveway Detection
+
+Driveway detection requires a custom-trained model since standard YOLO models don't include "driveway" as a class.
+
+```python
+from parcel_ai_json import DrivewayDetectionService
+
+# This will raise NotImplementedError with instructions
+detector = DrivewayDetectionService()
+```
+
+**To implement driveway detection, you can:**
+
+1. **Train a custom YOLOv8-seg model** on satellite imagery with driveway annotations
+2. **Use semantic segmentation models** (DeepLabV3, SegFormer) trained on satellite datasets
+3. **Use SAM (Segment Anything Model)** with manual prompts for each image
+4. **Train on public datasets** like SpaceNet or xView that may include pavement/driveway classes
+
+The `DrivewayDetectionService` provides the interface - you just need to provide a trained model.
+
 ## GeoJSON Output Format
 
 ```json
