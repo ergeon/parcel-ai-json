@@ -501,13 +501,15 @@ def generate_examples(num_examples=20):
     print("  Model: yolov8m-obb.pt (oriented bounding boxes)")
     print("  Models will be downloaded to ~/.ultralytics/ on first use")
 
-    from parcel_ai_json import SwimmingPoolDetectionService, AmenityDetectionService
+    from parcel_ai_json import PropertyDetectionService
 
-    vehicle_detector = VehicleDetectionService(confidence_threshold=0.25)
-    pool_detector = SwimmingPoolDetectionService(confidence_threshold=0.3)
-    amenity_detector = AmenityDetectionService(confidence_threshold=0.3)
+    detector = PropertyDetectionService(
+        vehicle_confidence=0.25,
+        pool_confidence=0.3,
+        amenity_confidence=0.3,
+    )
 
-    print("✓ Detectors initialized (vehicles, pools, and amenities)")
+    print("✓ Detector initialized (unified property detection)")
 
     # Get list of available satellite images
     satellite_images = list(satellite_dir.glob("*.jpg"))
@@ -561,37 +563,21 @@ def generate_examples(num_examples=20):
                 "zoom_level": 20,
             }
 
-            # Detect vehicles, swimming pools, and amenities
-            vehicle_detections = vehicle_detector.detect_vehicles(satellite_image)
-            pool_detections = pool_detector.detect_swimming_pools(satellite_image)
-            amenity_detections = amenity_detector.detect_amenities(satellite_image)
+            # Detect all property features
+            detections = detector.detect_all(satellite_image)
 
-            # Generate GeoJSON
-            vehicle_geojson = vehicle_detector.detect_vehicles_geojson(satellite_image)
-            pool_geojson = pool_detector.detect_swimming_pools_geojson(satellite_image)
-            amenity_geojson = amenity_detector.detect_amenities_geojson(satellite_image)
+            # Generate combined GeoJSON
+            combined_geojson = detections.to_geojson()
 
-            # Merge GeoJSON features
-            combined_geojson = {
-                "type": "FeatureCollection",
-                "features": vehicle_geojson["features"]
-                + pool_geojson["features"]
-                + amenity_geojson["features"],
-            }
-
-            # Count amenities by type
-            amenity_counts = {}
-            for detection in amenity_detections:
-                amenity_type = detection.amenity_type
-                amenity_counts[amenity_type] = amenity_counts.get(amenity_type, 0) + 1
-
+            # Get summary
+            summary = detections.summary()
             amenity_summary = ", ".join(
-                [f"{count} {atype}" for atype, count in amenity_counts.items()]
-            ) if amenity_counts else "none"
+                [f"{count} {atype}" for atype, count in summary["amenities"].items()]
+            ) if summary["amenities"] else "none"
 
             print(
-                f"  ✓ Detected: {len(vehicle_detections)} vehicles, "
-                f"{len(pool_detections)} pools, amenities: {amenity_summary}"
+                f"  ✓ Detected: {summary['vehicles']} vehicles, "
+                f"{summary['swimming_pools']} pools, amenities: {amenity_summary}"
             )
 
             # Save to geojson subdirectory

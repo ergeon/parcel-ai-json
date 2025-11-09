@@ -1,12 +1,13 @@
 # Parcel AI JSON
 
-Standalone AI/ML vehicle detection for satellite imagery with GeoJSON output.
+Unified property detection for satellite imagery with GeoJSON output.
 
 ## Features
 
-- **Vehicle Detection**: Detect vehicles in satellite imagery using YOLOv8-OBB (trained on DOTA aerial dataset)
-- **Swimming Pool Detection**: Detect swimming pools using YOLOv8-OBB (DOTA class 14)
-- **Amenity Detection**: Detect tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
+- **Unified Detection**: Detect vehicles, pools, and amenities in one call
+- **Vehicle Detection**: Cars, trucks, and other vehicles using YOLOv8-OBB (DOTA aerial dataset)
+- **Swimming Pool Detection**: Detect swimming pools (DOTA class 14)
+- **Amenity Detection**: Tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
 - **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
 - **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
 - **Standalone**: Works independently - no dependency on parcel-geojson
@@ -36,14 +37,16 @@ This will install PyTorch (~500MB) and Ultralytics for vehicle detection.
 
 ## Usage
 
-### Basic Vehicle Detection (Oriented Bounding Boxes)
+### Unified Property Detection (Recommended)
 
 ```python
-from parcel_ai_json import VehicleDetectionService
+from parcel_ai_json import PropertyDetectionService
 
-# Initialize detector (uses YOLOv8-OBB model, best for aerial imagery)
-detector = VehicleDetectionService(
-    confidence_threshold=0.25,
+# Initialize detector (detects vehicles, pools, and amenities)
+detector = PropertyDetectionService(
+    vehicle_confidence=0.25,
+    pool_confidence=0.3,
+    amenity_confidence=0.3,
 )
 
 # Prepare satellite image metadata
@@ -54,94 +57,49 @@ satellite_image = {
     "zoom_level": 20,  # Optional, default 20
 }
 
-# Option 1: Get detections with pixel and geo coordinates
-detections = detector.detect_vehicles(satellite_image)
+# Option 1: Get all detections in one call
+detections = detector.detect_all(satellite_image)
 
-for detection in detections:
-    print(f"Found {detection.class_name}")
-    print(f"  Pixel bbox: {detection.pixel_bbox}")
-    print(f"  Geo polygon: {detection.geo_polygon}")
-    print(f"  Confidence: {detection.confidence:.2%}")
+# Access individual detection types
+print(f"Found {len(detections.vehicles)} vehicles")
+print(f"Found {len(detections.swimming_pools)} pools")
+print(f"Found {len(detections.amenities)} amenities")
 
-# Option 2: Get GeoJSON directly
-geojson = detector.detect_vehicles_geojson(satellite_image)
+# Get summary statistics
+summary = detections.summary()
+print(f"Summary: {summary}")
+# Output: {'vehicles': 5, 'swimming_pools': 1, 'amenities': {'tennis court': 2}, 'total_amenities': 2}
 
-# geojson is a FeatureCollection with vehicle features
-print(f"Detected {len(geojson['features'])} vehicles")
+# Option 2: Get GeoJSON directly with all features
+geojson = detector.detect_all_geojson(satellite_image)
 
 # Save to file
 import json
-with open("vehicles.geojson", "w") as f:
+with open("property_detections.geojson", "w") as f:
     json.dump(geojson, f, indent=2)
 ```
 
-## Swimming Pool Detection
+### Individual Detectors (Advanced Usage)
 
-Swimming pool detection works out of the box using YOLOv8-OBB (DOTA dataset includes "swimming pool" as class 14).
-
-```python
-from parcel_ai_json import SwimmingPoolDetectionService
-
-# Initialize detector
-detector = SwimmingPoolDetectionService(
-    confidence_threshold=0.3,
-)
-
-# Detect swimming pools
-satellite_image = {
-    "path": "satellite.jpg",
-    "center_lat": 37.7749,
-    "center_lon": -122.4194,
-    "zoom_level": 20,
-}
-
-# Get detections with area estimates
-pools = detector.detect_swimming_pools(satellite_image)
-
-for pool in pools:
-    print(f"Swimming pool detected!")
-    print(f"  Confidence: {pool.confidence:.2%}")
-    print(f"  Approximate area: {pool.area_sqm:.1f} m²")
-    print(f"  Location: {pool.geo_polygon[0]}")
-
-# Or get GeoJSON directly
-geojson = detector.detect_swimming_pools_geojson(satellite_image)
-```
-
-## Amenity Detection
-
-Detects residential amenities using YOLOv8-OBB (DOTA dataset includes tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields).
+For more control, you can use individual detectors:
 
 ```python
-from parcel_ai_json import AmenityDetectionService
+from parcel_ai_json import VehicleDetectionService
 
-# Initialize detector
-detector = AmenityDetectionService(
-    confidence_threshold=0.3,
-)
-
-# Detect amenities
-satellite_image = {
-    "path": "satellite.jpg",
-    "center_lat": 37.7749,
-    "center_lon": -122.4194,
-    "zoom_level": 20,
-}
-
-# Get detections with area estimates
-amenities = detector.detect_amenities(satellite_image)
-
-for amenity in amenities:
-    print(f"{amenity.amenity_type.title()} detected!")
-    print(f"  Confidence: {amenity.confidence:.2%}")
-    print(f"  Approximate area: {amenity.area_sqm:.1f} m²")
-    print(f"  Location: {amenity.geo_polygon[0]}")
-
-# Or get GeoJSON directly
-geojson = detector.detect_amenities_geojson(satellite_image)
+detector = VehicleDetectionService(confidence_threshold=0.25)
+vehicles = detector.detect_vehicles(satellite_image)
 ```
 
-**Detectable amenities:**
+### Detectable Features
+
+**Vehicles:**
+- Small vehicles (cars, motorcycles)
+- Large vehicles (trucks, buses, RVs)
+
+**Swimming Pools:**
+- Residential and commercial swimming pools
+
+**Amenities:**
 - Tennis courts
 - Basketball courts
 - Baseball diamonds
