@@ -117,9 +117,7 @@ class AmenityDetectionService:
         self._model = YOLO(model_file)
         self._model.to(self.device)
 
-    def detect_amenities(
-        self, satellite_image: Dict
-    ) -> List[AmenityDetection]:
+    def detect_amenities(self, satellite_image: Dict) -> List[AmenityDetection]:
         """Detect amenities in satellite image.
 
         Args:

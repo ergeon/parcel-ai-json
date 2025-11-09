@@ -80,6 +80,7 @@ def generate_folium_map(
     image_name,
     center_lat,
     center_lon,
+    tree_coverage_percent=0.0,
 ):
     """Generate interactive Folium map with satellite imagery and vehicle detections.
 
@@ -151,6 +152,26 @@ def generate_folium_map(
             cross_origin=False,
             zindex=1,
             name="Satellite Imagery",
+        ).add_to(m)
+
+    # Add tree mask overlay if it exists
+    tree_mask_path = (
+        satellite_image_path.parent / f"{satellite_image_path.stem}_tree_mask.png"
+    )
+    if tree_mask_path.exists():
+        with open(tree_mask_path, "rb") as f:
+            tree_mask_data = f.read()
+        tree_mask_base64 = base64.b64encode(tree_mask_data).decode()
+        tree_mask_url = f"data:image/png;base64,{tree_mask_base64}"
+
+        folium.raster_layers.ImageOverlay(
+            image=tree_mask_url,
+            bounds=bounds,
+            opacity=0.7,  # Semi-transparent green overlay
+            interactive=False,
+            cross_origin=False,
+            zindex=2,  # Above satellite image
+            name="🌳 Tree Coverage",
         ).add_to(m)
 
     # Create feature groups for layer control
@@ -270,11 +291,11 @@ def generate_folium_map(
     # Add title
     title_html = f"""
         <div style="position: fixed;
-                    top: 10px; left: 50px; width: 600px; height: 90px;
+                    top: 10px; left: 50px; width: 700px; height: 90px;
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count}
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_coverage_percent:.1f}%
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -571,13 +592,21 @@ def generate_examples(num_examples=20):
 
             # Get summary
             summary = detections.summary()
-            amenity_summary = ", ".join(
-                [f"{count} {atype}" for atype, count in summary["amenities"].items()]
-            ) if summary["amenities"] else "none"
+            amenity_summary = (
+                ", ".join(
+                    [
+                        f"{count} {atype}"
+                        for atype, count in summary["amenities"].items()
+                    ]
+                )
+                if summary["amenities"]
+                else "none"
+            )
 
             print(
                 f"  ✓ Detected: {summary['vehicles']} vehicles, "
-                f"{summary['swimming_pools']} pools, amenities: {amenity_summary}"
+                f"{summary['swimming_pools']} pools, amenities: {amenity_summary}, "
+                f"tree coverage: {summary['tree_coverage_percent']:.1f}%"
             )
 
             # Save to geojson subdirectory
@@ -595,8 +624,10 @@ def generate_examples(num_examples=20):
             results.append(
                 {
                     "image": img_name,
-                    "vehicles_detected": len(vehicle_detections),
-                    "pools_detected": len(pool_detections),
+                    "vehicles_detected": summary["vehicles"],
+                    "pools_detected": summary["swimming_pools"],
+                    "amenities_detected": summary["total_amenities"],
+                    "tree_coverage_percent": summary["tree_coverage_percent"],
                     "output_file": output_filename,
                     "coordinates": {"lat": lat, "lon": lon},
                     "geojson": combined_geojson,
@@ -692,6 +723,7 @@ def generate_examples(num_examples=20):
             image_name=img_name,
             center_lat=result["coordinates"]["lat"],
             center_lon=result["coordinates"]["lon"],
+            tree_coverage_percent=result.get("tree_coverage_percent", 0.0),
         )
 
     print(f"✓ Generated {len(results)} Folium maps in: {folium_dir}")

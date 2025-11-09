@@ -4,10 +4,11 @@ Unified property detection for satellite imagery with GeoJSON output.
 
 ## Features
 
-- **Unified Detection**: Detect vehicles, pools, and amenities in one call
+- **Unified Detection**: Detect vehicles, pools, amenities, and trees in one call
 - **Vehicle Detection**: Cars, trucks, and other vehicles using YOLOv8-OBB (DOTA aerial dataset)
 - **Swimming Pool Detection**: Detect swimming pools (DOTA class 14)
 - **Amenity Detection**: Tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
+- **Tree Coverage Detection**: Estimate tree coverage percentage using detectree (Docker-based)
 - **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
 - **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
 - **Standalone**: Works independently - no dependency on parcel-geojson
@@ -34,6 +35,22 @@ pip install -e ".[dev]"
 ```
 
 This will install PyTorch (~500MB) and Ultralytics for vehicle detection.
+
+### Tree Detection Setup (Required)
+
+Tree detection requires Docker to run the detectree library in a Linux container:
+
+```bash
+# Build Docker image for tree detection
+docker build -f Dockerfile.tree -t parcel-tree-detector .
+
+# Test the Docker image
+docker run --rm parcel-tree-detector
+```
+
+**Why Docker?** The detectree library has C extension compatibility issues on macOS. Running it in a Linux container ensures it works reliably across all platforms.
+
+**Note:** Tree detection is automatically included in `PropertyDetectionService`. Make sure Docker is installed and the `parcel-tree-detector` image is built before using the service.
 
 ## Usage
 
@@ -73,6 +90,12 @@ print(f"Summary: {summary}")
 # Option 2: Get GeoJSON directly with all features
 geojson = detector.detect_all_geojson(satellite_image)
 
+# Tree coverage is automatically included in summary
+summary = detections.summary()
+print(f"Summary: {summary}")
+# Output: {'vehicles': 5, 'swimming_pools': 1, 'amenities': {'tennis court': 2},
+#          'total_amenities': 2, 'tree_coverage_percent': 2.6}
+
 # Save to file
 import json
 with open("property_detections.geojson", "w") as f:
@@ -92,19 +115,22 @@ vehicles = detector.detect_vehicles(satellite_image)
 
 ### Detectable Features
 
-**Vehicles:**
+**Vehicles (YOLOv8-OBB on DOTA dataset):**
 - Small vehicles (cars, motorcycles)
 - Large vehicles (trucks, buses, RVs)
 
-**Swimming Pools:**
+**Swimming Pools (YOLOv8-OBB on DOTA dataset):**
 - Residential and commercial swimming pools
 
-**Amenities:**
+**Amenities (YOLOv8-OBB on DOTA dataset):**
 - Tennis courts
 - Basketball courts
 - Baseball diamonds
 - Soccer ball fields
 - Ground track fields
+
+**Trees (detectree via Docker):**
+- Tree coverage percentage based on pixel classification
 
 ## GeoJSON Output Format
 

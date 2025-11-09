@@ -25,15 +25,21 @@ class TreeDetection:
     width: int
     height: int
 
+    # Tree mask image path (optional)
+    tree_mask_path: Optional[str] = None
+
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""
-        return {
+        result = {
             "tree_pixel_count": self.tree_pixel_count,
             "total_pixels": self.total_pixels,
             "tree_coverage_percent": self.tree_coverage_percent,
             "width": self.width,
             "height": self.height,
         }
+        if self.tree_mask_path:
+            result["tree_mask_path"] = self.tree_mask_path
+        return result
 
 
 class TreeDetectionService:
@@ -43,13 +49,17 @@ class TreeDetectionService:
     Detectree has macOS compatibility issues, so we run it in a Linux container.
     """
 
-    def __init__(self, docker_image: str = "parcel-tree-detector"):
+    def __init__(
+        self, docker_image: str = "parcel-tree-detector", save_mask: bool = True
+    ):
         """Initialize tree detection service.
 
         Args:
             docker_image: Name of Docker image to use (default: parcel-tree-detector)
+            save_mask: Whether to save tree mask as PNG for visualization
         """
         self.docker_image = docker_image
+        self.save_mask = save_mask
 
     def detect_trees(self, satellite_image: Dict) -> TreeDetection:
         """Detect trees in satellite image using Docker.
@@ -68,19 +78,23 @@ class TreeDetectionService:
         if not img_path.exists():
             raise FileNotFoundError(f"Image not found: {img_path}")
 
+        # Prepare output path for tree mask
+        tree_mask_path = None
+        if self.save_mask:
+            tree_mask_path = str(img_path.parent / f"{img_path.stem}_tree_mask.png")
+
         # Run detectree in Docker container
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    f"{img_path.parent}:/images:ro",
-                    self.docker_image,
-                    "python",
-                    "-c",
-                    f"""
+            docker_cmd = [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                f"{img_path.parent}:/images",
+                self.docker_image,
+                "python",
+                "-c",
+                f"""
 import detectree as dtr
 import numpy as np
 from PIL import Image
@@ -97,6 +111,13 @@ img_rgb.save('/tmp/temp_rgb.jpg')
 clf = dtr.Classifier()
 y_pred = clf.predict_img('/tmp/temp_rgb.jpg')
 
+# Save tree mask as PNG with green trees on transparent background
+# Create RGBA image - green (0,255,0) where trees, transparent elsewhere
+mask_rgba = np.zeros((y_pred.shape[0], y_pred.shape[1], 4), dtype=np.uint8)
+mask_rgba[y_pred == 1] = [0, 255, 0, 180]  # Green with 70% opacity
+mask_img = Image.fromarray(mask_rgba, 'RGBA')
+mask_img.save('/images/{img_path.stem}_tree_mask.png')
+
 # Output results as JSON
 result = {{
     'tree_pixels': int(np.sum(y_pred)),
@@ -107,16 +128,17 @@ result = {{
 }}
 print(json.dumps(result))
 """,
-                ],
+            ]
+
+            result = subprocess.run(
+                docker_cmd,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
 
             if result.returncode != 0:
-                raise RuntimeError(
-                    f"Tree detection failed: {result.stderr}"
-                )
+                raise RuntimeError(f"Tree detection failed: {result.stderr}")
 
             # Parse JSON output from last line
             output_lines = result.stdout.strip().split("\n")
@@ -129,6 +151,7 @@ print(json.dumps(result))
                 tree_coverage_percent=data["coverage_percent"],
                 width=data["width"],
                 height=data["height"],
+                tree_mask_path=tree_mask_path if self.save_mask else None,
             )
 
         except subprocess.TimeoutExpired:

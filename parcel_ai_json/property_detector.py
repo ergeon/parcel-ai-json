@@ -18,6 +18,7 @@ from parcel_ai_json.swimming_pool_detector import (
     SwimmingPoolDetection,
 )
 from parcel_ai_json.amenity_detector import AmenityDetectionService, AmenityDetection
+from parcel_ai_json.tree_detector import TreeDetectionService, TreeDetection
 
 
 @dataclass
@@ -27,6 +28,7 @@ class PropertyDetections:
     vehicles: List[VehicleDetection]
     swimming_pools: List[SwimmingPoolDetection]
     amenities: List[AmenityDetection]
+    trees: TreeDetection
 
     def to_geojson(self) -> Dict:
         """Convert all detections to GeoJSON FeatureCollection."""
@@ -59,6 +61,7 @@ class PropertyDetections:
             "swimming_pools": len(self.swimming_pools),
             "amenities": amenity_counts,
             "total_amenities": len(self.amenities),
+            "tree_coverage_percent": self.trees.tree_coverage_percent,
         }
 
 
@@ -76,6 +79,7 @@ class PropertyDetectionService:
         pool_confidence: float = 0.3,
         amenity_confidence: float = 0.3,
         device: str = "cpu",
+        tree_docker_image: str = "parcel-tree-detector",
     ):
         """Initialize property detection service.
 
@@ -85,6 +89,7 @@ class PropertyDetectionService:
             pool_confidence: Minimum confidence for pools (0.0-1.0)
             amenity_confidence: Minimum confidence for amenities (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
+            tree_docker_image: Docker image for tree detection
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -105,6 +110,9 @@ class PropertyDetectionService:
             device=device,
         )
 
+        # Tree detection (requires Docker)
+        self.tree_detector = TreeDetectionService(docker_image=tree_docker_image)
+
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:
         """Detect all property features in satellite image.
 
@@ -116,15 +124,16 @@ class PropertyDetectionService:
                 - zoom_level: Optional zoom level (default 20)
 
         Returns:
-            PropertyDetections object with vehicles, pools, and amenities
+            PropertyDetections object with vehicles, pools, amenities, and trees
         """
         # Detect all features
         vehicles = self.vehicle_detector.detect_vehicles(satellite_image)
         pools = self.pool_detector.detect_swimming_pools(satellite_image)
         amenities = self.amenity_detector.detect_amenities(satellite_image)
+        trees = self.tree_detector.detect_trees(satellite_image)
 
         return PropertyDetections(
-            vehicles=vehicles, swimming_pools=pools, amenities=amenities
+            vehicles=vehicles, swimming_pools=pools, amenities=amenities, trees=trees
         )
 
     def detect_all_geojson(self, satellite_image: Dict) -> Dict:
