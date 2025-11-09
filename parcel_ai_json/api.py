@@ -32,15 +32,31 @@ def get_detector() -> PropertyDetectionService:
     """Get or create the PropertyDetectionService singleton."""
     global _detector
     if _detector is None:
-        logger.info("Initializing PropertyDetectionService...")
+        logger.info(
+            "Initializing PropertyDetectionService with tree polygon extraction..."
+        )
+        # Create tree detector with polygon extraction
+        from parcel_ai_json.tree_detector import TreeDetectionService
+        tree_detector = TreeDetectionService(
+            use_docker=False,  # Use native detectree in container
+            extract_polygons=True,  # Enable tree polygon extraction
+            min_tree_area_pixels=50,  # Filter small noise regions
+        )
+
+        # Create property detector and inject custom tree detector
         _detector = PropertyDetectionService(
             vehicle_confidence=0.25,
             pool_confidence=0.3,
             amenity_confidence=0.3,
             device="cpu",  # Use "cuda" if GPU available
-            tree_use_docker=False,  # Use native detectree in container
         )
-        logger.info("PropertyDetectionService initialized")
+
+        # Replace tree detector with our configured instance
+        _detector.tree_detector = tree_detector
+
+        logger.info(
+            "PropertyDetectionService initialized with tree polygon extraction"
+        )
     return _detector
 
 
