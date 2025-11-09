@@ -34,11 +34,14 @@ This will install PyTorch (~500MB) and Ultralytics for vehicle detection.
 
 ## Usage
 
+### Basic Vehicle Detection (Oriented Bounding Boxes)
+
 ```python
 from parcel_ai_json import VehicleDetectionService
 
-# Initialize detector
+# Initialize detector with OBB model (best for aerial imagery)
 detector = VehicleDetectionService(
+    model_type="obb",  # Oriented Bounding Boxes (default)
     confidence_threshold=0.25,
 )
 
@@ -70,6 +73,31 @@ import json
 with open("vehicles.geojson", "w") as f:
     json.dump(geojson, f, indent=2)
 ```
+
+### Precise Vehicle Outlines (Segmentation)
+
+For more accurate vehicle shapes, use segmentation models:
+
+```python
+from parcel_ai_json import VehicleDetectionService
+
+# Initialize detector with segmentation model
+detector = VehicleDetectionService(
+    model_type="seg",  # Segmentation masks
+    confidence_threshold=0.25,
+)
+
+# Detection works the same way
+geojson = detector.detect_vehicles_geojson(satellite_image)
+
+# geo_polygon now contains precise vehicle outline instead of just bbox corners
+```
+
+### Model Types
+
+- **`obb`** (default): Oriented Bounding Boxes - Best for aerial imagery (DOTA dataset)
+- **`seg`**: Segmentation masks - Precise pixel-level outlines (COCO dataset)
+- **`bbox`**: Regular axis-aligned bounding boxes
 
 ## GeoJSON Output Format
 

@@ -70,19 +70,25 @@ class VehicleDetectionService:
     def __init__(
         self,
         model_path: Optional[str] = None,
+        model_type: str = "obb",
         confidence_threshold: float = 0.3,
         device: str = "cpu",
     ):
         """Initialize vehicle detection service.
 
         Args:
-            model_path: Path to YOLO model weights (e.g., 'yolov8m-obb.pt', 'yolov8n.pt')
-                       If None, uses yolov8m-obb.pt (optimized for aerial imagery)
+            model_path: Path to YOLO model weights (e.g., 'yolov8m-obb.pt', 'yolov8m-seg.pt')
+                       If None, uses default based on model_type
                        Model will be auto-downloaded on first use to ~/.ultralytics/
+            model_type: Type of model to use:
+                       - 'obb': Oriented Bounding Boxes (default, best for aerial imagery)
+                       - 'seg': Segmentation masks (precise vehicle outlines)
+                       - 'bbox': Regular bounding boxes
             confidence_threshold: Minimum confidence score for detections (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
         """
         self.model_path = model_path
+        self.model_type = model_type.lower()
         self.confidence_threshold = confidence_threshold
         self.device = device
         self._model = None
@@ -112,8 +118,16 @@ class VehicleDetectionService:
                 "Install with: pip install parcel-ai-json"
             )
 
-        # Default to yolov8m-obb.pt (optimized for aerial imagery, DOTA dataset)
-        model_file = self.model_path or "yolov8m-obb.pt"
+        # Select default model based on type if not specified
+        if self.model_path is None:
+            if self.model_type == "obb":
+                model_file = "yolov8m-obb.pt"  # Best for aerial imagery
+            elif self.model_type == "seg":
+                model_file = "yolov8m-seg.pt"  # Segmentation masks
+            else:
+                model_file = "yolov8m.pt"  # Regular bounding boxes
+        else:
+            model_file = self.model_path
 
         # Standard YOLO models that will be auto-downloaded by ultralytics
         auto_download_models = {
@@ -124,6 +138,10 @@ class VehicleDetectionService:
             "yolov8n-obb.pt", "yolov8s-obb.pt", "yolov8m-obb.pt",
             "yolov8l-obb.pt", "yolov8x-obb.pt",
             "yolov8n-obb", "yolov8s-obb", "yolov8m-obb", "yolov8l-obb", "yolov8x-obb",
+            # Segmentation models
+            "yolov8n-seg.pt", "yolov8s-seg.pt", "yolov8m-seg.pt",
+            "yolov8l-seg.pt", "yolov8x-seg.pt",
+            "yolov8n-seg", "yolov8s-seg", "yolov8m-seg", "yolov8l-seg", "yolov8x-seg",
         }
 
         # Check if custom model exists (skip check for auto-download models)
@@ -209,20 +227,69 @@ class VehicleDetectionService:
 
         # Process detections
         for result in results:
-            # Check if OBB model (oriented bounding boxes) or regular model
-            boxes = (
-                result.obb
-                if hasattr(result, "obb") and result.obb is not None
-                else result.boxes
-            )
+            # Check model type: segmentation, OBB, or regular boxes
+            has_masks = hasattr(result, "masks") and result.masks is not None
+            has_obb = hasattr(result, "obb") and result.obb is not None
 
-            if boxes is None or len(boxes) == 0:
-                continue
+            # For segmentation models, process masks
+            if has_masks:
+                masks = result.masks
+                boxes = result.boxes  # Still need boxes for confidence/class
 
-            # OBB and regular boxes have different iteration patterns
-            is_obb = hasattr(result, "obb") and result.obb is not None
+                if len(masks) == 0 or boxes is None or len(boxes) == 0:
+                    continue
 
-            if is_obb:
+                # Process each segmented object
+                for i in range(len(masks)):
+                    # Get class name
+                    class_id = int(boxes.cls[i].item())
+                    class_name = self._model.names[class_id]
+
+                    # Filter to vehicle classes only
+                    class_lower = class_name.lower()
+                    is_vehicle = (
+                        class_lower in self.vehicle_classes
+                        or "vehicle" in class_lower
+                        or "car" in class_lower
+                    )
+                    if not is_vehicle:
+                        continue
+
+                    # Get confidence score
+                    confidence = float(boxes.conf[i].item())
+
+                    # Get bounding box for pixel_bbox field
+                    x1, y1, x2, y2 = boxes.xyxy[i].tolist()
+
+                    # Get segmentation mask polygon (pixel coordinates)
+                    mask_polygon = masks.xy[i]  # numpy array of shape (N, 2)
+
+                    # Convert mask polygon from pixel to geographic coordinates
+                    geo_polygon = []
+                    for point in mask_polygon:
+                        px, py = point
+                        lon, lat = coord_converter.pixel_to_geo(px, py)
+                        geo_polygon.append((lon, lat))
+
+                    # Close the polygon if not already closed
+                    if len(geo_polygon) > 0 and geo_polygon[0] != geo_polygon[-1]:
+                        geo_polygon.append(geo_polygon[0])
+
+                    detection = VehicleDetection(
+                        pixel_bbox=(x1, y1, x2, y2),
+                        geo_polygon=geo_polygon,
+                        confidence=confidence,
+                        class_name=class_name,
+                    )
+
+                    detections.append(detection)
+
+            # For OBB models (oriented bounding boxes)
+            elif has_obb:
+                boxes = result.obb
+
+                if boxes is None or len(boxes) == 0:
+                    continue
                 # OBB format: boxes.cls, boxes.conf, boxes.xyxy are all tensors
                 for i in range(len(boxes)):
                     # Get class name
@@ -257,7 +324,14 @@ class VehicleDetectionService:
                     )
 
                     detections.append(detection)
+
+            # For regular bounding box models
             else:
+                boxes = result.boxes
+
+                if boxes is None or len(boxes) == 0:
+                    continue
+
                 # Regular format: iterate through box objects
                 for box in boxes:
                     # Get class name
