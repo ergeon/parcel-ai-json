@@ -45,6 +45,11 @@ class PropertyDetections:
         for amenity in self.amenities:
             features.append(amenity.to_geojson_feature())
 
+        # Add tree polygon features if available
+        if self.trees.tree_polygons:
+            for tree_polygon in self.trees.tree_polygons:
+                features.append(tree_polygon.to_geojson_feature())
+
         # Add tree coverage metadata (not a spatial feature, but coverage info)
         tree_coverage = {
             "tree_coverage_percent": self.trees.tree_coverage_percent,
@@ -57,6 +62,10 @@ class PropertyDetections:
         # Include tree mask path if available
         if self.trees.tree_mask_path:
             tree_coverage["tree_mask_path"] = self.trees.tree_mask_path
+
+        # Include tree polygon count if available
+        if self.trees.tree_polygons:
+            tree_coverage["tree_cluster_count"] = len(self.trees.tree_polygons)
 
         return {
             "type": "FeatureCollection",
