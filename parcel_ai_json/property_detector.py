@@ -143,7 +143,7 @@ class PropertyDetectionService:
         detectree_extract_polygons: bool = True,
         detectree_min_tree_area_pixels: int = 50,
         detectree_simplify_tolerance_meters: float = 0.5,
-        detectree_use_docker: bool = False,
+        detectree_use_docker: bool = True,
     ):
         """Initialize property detection service.
 
