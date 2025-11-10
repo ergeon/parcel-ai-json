@@ -275,8 +275,8 @@ def generate_folium_map(
             tooltip_text = f"{vehicle_class} ({confidence:.1%})"
             # Capitalize first letter of each word for label
             label_text = vehicle_class.title()
-            fill_color = "#00FF00"  # Green for vehicles
-            line_color = "#00AA00"
+            fill_color = "#9933FF"  # Purple for vehicles
+            line_color = "#6600CC"
             feature_group = vehicle_group
 
         # Add polygon with label
