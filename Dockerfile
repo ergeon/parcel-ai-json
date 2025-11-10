@@ -70,13 +70,11 @@ clf = dtr.Classifier(); \
 print('Detectree ready'); \
 "
 
-# Pre-download DeepForest model
+# Pre-download DeepForest model (downloads on first use in DeepForestService)
+# Model will be cached at /root/.cache/torch when first loaded
 RUN python -c "\
-from deepforest import main; \
-print('Downloading DeepForest model...'); \
-model = main.deepforest(); \
-model.use_release(); \
-print('DeepForest model downloaded and cached'); \
+print('DeepForest will download model on first use'); \
+print('Model cache directory: /root/.cache/torch'); \
 "
 
 # Create directory for temporary file uploads
