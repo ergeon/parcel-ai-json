@@ -9,8 +9,9 @@ torch>=2.0.0            # PyTorch for YOLO
 torchvision>=0.15.0
 pyproj>=3.0.0           # Geodesic coordinate transformations
 
-# Tree detection with DeepForest
+# Tree detection with DeepForest (individual tree crowns) and detectree (coverage polygons)
 deepforest>=2.0.0
+detectree==0.8.0      # Tree coverage detection (pixel-level classification)
 
 # API dependencies
 fastapi>=0.104.0

@@ -45,16 +45,21 @@ class PropertyDetections:
         for amenity in self.amenities:
             features.append(amenity.to_geojson_feature())
 
-        # Add tree bounding box features
+        # Add tree bounding box features (DeepForest)
         for tree in self.trees.trees:
             features.append(tree.to_geojson_feature())
+
+        # Add tree coverage polygon features (detectree)
+        if self.trees.tree_polygons:
+            for polygon in self.trees.tree_polygons:
+                features.append(polygon.to_geojson_feature())
 
         # Add tree detection metadata
         tree_metadata = {
             "tree_count": self.trees.tree_count,
         }
 
-        # Include optional statistics if available
+        # Include DeepForest statistics if available
         if self.trees.average_confidence is not None:
             tree_metadata["average_confidence"] = round(
                 self.trees.average_confidence, 3
@@ -63,6 +68,17 @@ class PropertyDetections:
             tree_metadata["average_crown_area_sqm"] = round(
                 self.trees.average_crown_area_sqm, 2
             )
+
+        # Include detectree statistics if available
+        if (
+            hasattr(self.trees, "tree_coverage_percent")
+            and self.trees.tree_coverage_percent is not None
+        ):
+            tree_metadata["tree_coverage_percent"] = round(
+                self.trees.tree_coverage_percent, 2
+            )
+        if hasattr(self.trees, "tree_pixel_count"):
+            tree_metadata["tree_pixel_count"] = self.trees.tree_pixel_count
 
         return {
             "type": "FeatureCollection",
@@ -86,13 +102,24 @@ class PropertyDetections:
             "tree_count": self.trees.tree_count,
         }
 
-        # Add optional tree statistics if available
+        # Add DeepForest tree statistics if available
         if self.trees.average_confidence is not None:
             summary["average_tree_confidence"] = round(self.trees.average_confidence, 3)
         if self.trees.average_crown_area_sqm is not None:
             summary["average_crown_area_sqm"] = round(
                 self.trees.average_crown_area_sqm, 2
             )
+
+        # Add detectree tree statistics if available
+        if (
+            hasattr(self.trees, "tree_coverage_percent")
+            and self.trees.tree_coverage_percent is not None
+        ):
+            summary["tree_coverage_percent"] = round(
+                self.trees.tree_coverage_percent, 2
+            )
+        if hasattr(self.trees, "tree_polygons") and self.trees.tree_polygons:
+            summary["tree_polygon_count"] = len(self.trees.tree_polygons)
 
         return summary
 
@@ -144,9 +171,10 @@ class PropertyDetectionService:
             device=device,
         )
 
-        # Tree detection with DeepForest
+        # Tree detection with DeepForest and detect tree (combined service)
         self.tree_detector = TreeDetectionService(
-            model_name=tree_model_name, confidence_threshold=tree_confidence
+            deepforest_model_name=tree_model_name,
+            deepforest_confidence_threshold=tree_confidence,
         )
 
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:

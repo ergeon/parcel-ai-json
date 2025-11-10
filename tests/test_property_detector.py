@@ -211,8 +211,9 @@ class TestPropertyDetectionService(unittest.TestCase):
         self.assertEqual(service.vehicle_detector.confidence_threshold, 0.2)
         self.assertEqual(service.pool_detector.confidence_threshold, 0.25)
         self.assertEqual(service.amenity_detector.confidence_threshold, 0.35)
-        self.assertEqual(service.tree_detector.confidence_threshold, 0.15)
-        self.assertEqual(service.tree_detector.model_name, "custom/tree-model")
+        # Check tree detector (Combined service) - check deepforest and detectree sub-services
+        self.assertEqual(service.tree_detector.deepforest.confidence_threshold, 0.15)
+        self.assertEqual(service.tree_detector.deepforest.model_name, "custom/tree-model")
 
     @patch("parcel_ai_json.property_detector.TreeDetectionService")
     @patch("parcel_ai_json.property_detector.AmenityDetectionService")
