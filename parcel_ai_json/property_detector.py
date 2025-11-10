@@ -140,6 +140,9 @@ class PropertyDetectionService:
         device: str = "cpu",
         tree_confidence: float = 0.1,
         tree_model_name: str = "weecology/deepforest-tree",
+        detectree_extract_polygons: bool = True,
+        detectree_min_tree_area_pixels: int = 50,
+        detectree_simplify_tolerance_meters: float = 0.5,
     ):
         """Initialize property detection service.
 
@@ -151,6 +154,9 @@ class PropertyDetectionService:
             device: Device to run inference on ('cpu', 'cuda', 'mps')
             tree_confidence: Minimum confidence for trees (0.0-1.0, default: 0.1)
             tree_model_name: Hugging Face model name for DeepForest
+            detectree_extract_polygons: Extract tree cluster polygons from detectree
+            detectree_min_tree_area_pixels: Minimum tree area in pixels for detectree
+            detectree_simplify_tolerance_meters: Polygon simplification tolerance in meters
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -171,10 +177,13 @@ class PropertyDetectionService:
             device=device,
         )
 
-        # Tree detection with DeepForest and detect tree (combined service)
+        # Tree detection with DeepForest and detectree (combined service)
         self.tree_detector = TreeDetectionService(
             deepforest_model_name=tree_model_name,
             deepforest_confidence_threshold=tree_confidence,
+            detectree_extract_polygons=detectree_extract_polygons,
+            detectree_min_tree_area_pixels=detectree_min_tree_area_pixels,
+            detectree_simplify_tolerance_meters=detectree_simplify_tolerance_meters,
         )
 
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:

@@ -563,6 +563,10 @@ def generate_examples(num_examples=20):
         amenity_confidence=0.3,
         tree_confidence=0.1,  # Low threshold to detect more trees with DeepForest
         tree_model_name="weecology/deepforest-tree",
+        # Enable detectree polygon extraction with clustering and simplification
+        detectree_extract_polygons=True,
+        detectree_min_tree_area_pixels=50,  # Filter small noise
+        detectree_simplify_tolerance_meters=0.5,  # Topology-preserving simplification
     )
 
     print("✓ Detector initialized (unified property detection with tree polygons)")
