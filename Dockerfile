@@ -37,6 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install additional dependencies for tree detection and API
 RUN pip install --no-cache-dir \
     detectree \
+    deepforest>=2.0.0 \
     fastapi \
     uvicorn[standard] \
     python-multipart
@@ -67,6 +68,15 @@ import detectree as dtr; \
 print('Initializing detectree classifier...'); \
 clf = dtr.Classifier(); \
 print('Detectree ready'); \
+"
+
+# Pre-download DeepForest model
+RUN python -c "\
+from deepforest import main; \
+print('Downloading DeepForest model...'); \
+model = main.deepforest(); \
+model.use_release(); \
+print('DeepForest model downloaded and cached'); \
 "
 
 # Create directory for temporary file uploads

@@ -34,7 +34,7 @@ def get_detector() -> PropertyDetectionService:
     if _detector is None:
         logger.info("Initializing PropertyDetectionService with DeepForest...")
 
-        # Create property detector with DeepForest tree detection
+        # Create property detector with parallel DeepForest + detectree tree detection
         _detector = PropertyDetectionService(
             vehicle_confidence=0.25,
             pool_confidence=0.3,
@@ -42,6 +42,11 @@ def get_detector() -> PropertyDetectionService:
             device="cpu",  # Use "cuda" if GPU available
             tree_confidence=0.1,  # Low threshold to detect more trees
             tree_model_name="weecology/deepforest-tree",
+            # Enable detectree polygon extraction (runs natively inside container)
+            detectree_extract_polygons=True,
+            detectree_min_tree_area_pixels=50,
+            detectree_simplify_tolerance_meters=0.5,
+            detectree_use_docker=False,  # Native mode inside unified container
         )
 
         logger.info("PropertyDetectionService initialized with DeepForest")
