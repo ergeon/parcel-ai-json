@@ -10,7 +10,7 @@ from parcel_ai_json.property_detector import (
 from parcel_ai_json.vehicle_detector import VehicleDetection
 from parcel_ai_json.swimming_pool_detector import SwimmingPoolDetection
 from parcel_ai_json.amenity_detector import AmenityDetection
-from parcel_ai_json.tree_detector import TreeDetection
+from parcel_ai_json.tree_detector import TreeDetection, TreeBoundingBox
 
 
 class TestPropertyDetections(unittest.TestCase):
@@ -59,13 +59,17 @@ class TestPropertyDetections(unittest.TestCase):
             area_sqm=200.0,
         )
 
+        tree = TreeBoundingBox(
+            pixel_bbox=(50.0, 60.0, 100.0, 110.0),
+            geo_bbox=(-122.4197, 37.7752, -122.4196, 37.7753),
+            confidence=0.75,
+        )
+
         trees = TreeDetection(
-            tree_pixel_count=5000,
-            total_pixels=262144,
-            tree_coverage_percent=1.91,
-            width=512,
-            height=512,
-            tree_mask_path="/tmp/trees.png",
+            trees=[tree],
+            tree_count=1,
+            average_confidence=0.75,
+            average_crown_area_sqm=15.5,
         )
 
         detections = PropertyDetections(
@@ -79,44 +83,33 @@ class TestPropertyDetections(unittest.TestCase):
 
         # Check structure
         self.assertEqual(geojson["type"], "FeatureCollection")
-        self.assertEqual(len(geojson["features"]), 3)  # vehicle + pool + amenity
+        self.assertEqual(len(geojson["features"]), 4)  # vehicle + pool + amenity + tree
 
-        # Check tree coverage metadata (only essential fields)
-        self.assertIn("tree_coverage", geojson)
-        self.assertEqual(geojson["tree_coverage"]["tree_coverage_percent"], 1.91)
-        # Internal fields should not be exposed
-        self.assertNotIn("tree_pixel_count", geojson["tree_coverage"])
-        self.assertNotIn("tree_mask_path", geojson["tree_coverage"])
-        self.assertNotIn("total_pixels", geojson["tree_coverage"])
-        self.assertNotIn("image_width", geojson["tree_coverage"])
-        self.assertNotIn("image_height", geojson["tree_coverage"])
+        # Check tree metadata
+        self.assertIn("trees", geojson)
+        self.assertEqual(geojson["trees"]["tree_count"], 1)
+        self.assertEqual(geojson["trees"]["average_confidence"], 0.75)
+        self.assertEqual(geojson["trees"]["average_crown_area_sqm"], 15.5)
 
-    def test_to_geojson_no_tree_mask(self):
-        """Test GeoJSON output when tree mask is not available."""
-        trees = TreeDetection(
-            tree_pixel_count=5000,
-            total_pixels=262144,
-            tree_coverage_percent=1.91,
-            width=512,
-            height=512,
-            tree_mask_path=None,
-        )
+    def test_to_geojson_no_trees(self):
+        """Test GeoJSON output when no trees detected."""
+        trees = TreeDetection(trees=[], tree_count=0)
 
         detections = PropertyDetections(
-            vehicles=[],
-            swimming_pools=[],
-            amenities=[],
-            trees=trees,
+            vehicles=[], swimming_pools=[], amenities=[], trees=trees
         )
 
         geojson = detections.to_geojson()
 
-        # Internal fields should not be in response
-        self.assertNotIn("tree_mask_path", geojson["tree_coverage"])
-        self.assertNotIn("tree_pixel_count", geojson["tree_coverage"])
-        self.assertNotIn("total_pixels", geojson["tree_coverage"])
-        # Only essential field should be present
-        self.assertIn("tree_coverage_percent", geojson["tree_coverage"])
+        # Check structure
+        self.assertEqual(geojson["type"], "FeatureCollection")
+        self.assertEqual(len(geojson["features"]), 0)
+
+        # Check tree metadata
+        self.assertIn("trees", geojson)
+        self.assertEqual(geojson["trees"]["tree_count"], 0)
+        self.assertNotIn("average_confidence", geojson["trees"])
+        self.assertNotIn("average_crown_area_sqm", geojson["trees"])
 
     def test_summary(self):
         """Test summary statistics."""
@@ -175,11 +168,10 @@ class TestPropertyDetections(unittest.TestCase):
         )
 
         trees = TreeDetection(
-            tree_pixel_count=5000,
-            total_pixels=262144,
-            tree_coverage_percent=1.91,
-            width=512,
-            height=512,
+            trees=[],
+            tree_count=5,
+            average_confidence=0.65,
+            average_crown_area_sqm=12.5,
         )
 
         detections = PropertyDetections(
@@ -195,7 +187,9 @@ class TestPropertyDetections(unittest.TestCase):
         self.assertEqual(summary["swimming_pools"], 1)
         self.assertEqual(summary["total_amenities"], 2)
         self.assertEqual(summary["amenities"]["tennis-court"], 2)
-        self.assertEqual(summary["tree_coverage_percent"], 1.91)
+        self.assertEqual(summary["tree_count"], 5)
+        self.assertEqual(summary["average_tree_confidence"], 0.65)
+        self.assertEqual(summary["average_crown_area_sqm"], 12.5)
 
 
 class TestPropertyDetectionService(unittest.TestCase):
@@ -209,14 +203,16 @@ class TestPropertyDetectionService(unittest.TestCase):
             pool_confidence=0.25,
             amenity_confidence=0.35,
             device="cuda",
-            tree_use_docker=False,
+            tree_confidence=0.15,
+            tree_model_name="custom/tree-model",
         )
 
         self.assertEqual(service.vehicle_detector.model_path, "custom.pt")
         self.assertEqual(service.vehicle_detector.confidence_threshold, 0.2)
         self.assertEqual(service.pool_detector.confidence_threshold, 0.25)
         self.assertEqual(service.amenity_detector.confidence_threshold, 0.35)
-        self.assertEqual(service.tree_detector.use_docker, False)
+        self.assertEqual(service.tree_detector.confidence_threshold, 0.15)
+        self.assertEqual(service.tree_detector.model_name, "custom/tree-model")
 
     @patch("parcel_ai_json.property_detector.TreeDetectionService")
     @patch("parcel_ai_json.property_detector.AmenityDetectionService")
@@ -271,11 +267,10 @@ class TestPropertyDetectionService(unittest.TestCase):
 
         mock_tree_detector = Mock()
         mock_tree_detector.detect_trees.return_value = TreeDetection(
-            tree_pixel_count=5000,
-            total_pixels=262144,
-            tree_coverage_percent=1.91,
-            width=512,
-            height=512,
+            trees=[],
+            tree_count=3,
+            average_confidence=0.6,
+            average_crown_area_sqm=10.0,
         )
         mock_tree_service.return_value = mock_tree_detector
 
@@ -293,7 +288,9 @@ class TestPropertyDetectionService(unittest.TestCase):
 
         # Verify all detectors were called
         mock_vehicle_detector.detect_vehicles.assert_called_once_with(satellite_image)
-        mock_pool_detector.detect_swimming_pools.assert_called_once_with(satellite_image)
+        mock_pool_detector.detect_swimming_pools.assert_called_once_with(
+            satellite_image
+        )
         mock_amenity_detector.detect_amenities.assert_called_once_with(satellite_image)
         mock_tree_detector.detect_trees.assert_called_once_with(satellite_image)
 
@@ -301,7 +298,8 @@ class TestPropertyDetectionService(unittest.TestCase):
         self.assertEqual(len(detections.vehicles), 1)
         self.assertEqual(len(detections.swimming_pools), 1)
         self.assertEqual(len(detections.amenities), 0)
-        self.assertEqual(detections.trees.tree_coverage_percent, 1.91)
+        self.assertEqual(detections.trees.tree_count, 3)
+        self.assertEqual(detections.trees.average_confidence, 0.6)
 
     @patch("parcel_ai_json.property_detector.TreeDetectionService")
     @patch("parcel_ai_json.property_detector.AmenityDetectionService")
@@ -330,11 +328,7 @@ class TestPropertyDetectionService(unittest.TestCase):
 
         mock_tree_detector = Mock()
         mock_tree_detector.detect_trees.return_value = TreeDetection(
-            tree_pixel_count=0,
-            total_pixels=262144,
-            tree_coverage_percent=0.0,
-            width=512,
-            height=512,
+            trees=[], tree_count=0
         )
         mock_tree_service.return_value = mock_tree_detector
 
@@ -350,7 +344,8 @@ class TestPropertyDetectionService(unittest.TestCase):
 
         self.assertEqual(geojson["type"], "FeatureCollection")
         self.assertEqual(len(geojson["features"]), 0)
-        self.assertIn("tree_coverage", geojson)
+        self.assertIn("trees", geojson)
+        self.assertEqual(geojson["trees"]["tree_count"], 0)
 
 
 if __name__ == "__main__":

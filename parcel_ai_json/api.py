@@ -32,32 +32,19 @@ def get_detector() -> PropertyDetectionService:
     """Get or create the PropertyDetectionService singleton."""
     global _detector
     if _detector is None:
-        logger.info(
-            "Initializing PropertyDetectionService with tree polygon extraction..."
-        )
-        # Create tree detector with polygon extraction
-        from parcel_ai_json.tree_detector import TreeDetectionService
-        tree_detector = TreeDetectionService(
-            use_docker=False,  # Use native detectree in container
-            extract_polygons=True,  # Enable tree polygon extraction
-            min_tree_area_pixels=100,  # Filter tiny noise (1-2 m²)
-            simplify_tolerance_meters=0.0,  # Disable simplification
-        )
+        logger.info("Initializing PropertyDetectionService with DeepForest...")
 
-        # Create property detector and inject custom tree detector
+        # Create property detector with DeepForest tree detection
         _detector = PropertyDetectionService(
             vehicle_confidence=0.25,
             pool_confidence=0.3,
             amenity_confidence=0.3,
             device="cpu",  # Use "cuda" if GPU available
+            tree_confidence=0.1,  # Low threshold to detect more trees
+            tree_model_name="weecology/deepforest-tree",
         )
 
-        # Replace tree detector with our configured instance
-        _detector.tree_detector = tree_detector
-
-        logger.info(
-            "PropertyDetectionService initialized with tree polygon extraction"
-        )
+        logger.info("PropertyDetectionService initialized with DeepForest")
     return _detector
 
 

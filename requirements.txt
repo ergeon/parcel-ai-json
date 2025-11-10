@@ -9,8 +9,8 @@ torch>=2.0.0            # PyTorch for YOLO
 torchvision>=0.15.0
 pyproj>=3.0.0           # Geodesic coordinate transformations
 
-# Tree detection (Docker environment only)
-detectree>=0.8.0
+# Tree detection with DeepForest
+deepforest>=2.0.0
 
 # API dependencies
 fastapi>=0.104.0

@@ -204,9 +204,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_extract_tree_polygons_filters_small_areas(self):
         """Test that small noise regions are filtered out."""
-        service = TreeDetectionService(
-            use_docker=False, min_tree_area_pixels=100
-        )
+        service = TreeDetectionService(use_docker=False, min_tree_area_pixels=100)
 
         # Create mask with one large region and one small noise region
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -343,9 +341,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification(self):
         """Test polygon simplification reduces vertex count."""
-        service = TreeDetectionService(
-            use_docker=False, simplify_tolerance_meters=1.0
-        )
+        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=1.0)
 
         # Create a complex polygon with many vertices
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -370,9 +366,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification_disabled(self):
         """Test that simplification can be disabled."""
-        service = TreeDetectionService(
-            use_docker=False, simplify_tolerance_meters=0.0
-        )
+        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=0.0)
 
         mask = np.zeros((100, 100), dtype=np.uint8)
         mask[20:80, 20:80] = 1
@@ -403,9 +397,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification_preserves_topology(self):
         """Test that simplification preserves polygon validity."""
-        service = TreeDetectionService(
-            use_docker=False, simplify_tolerance_meters=2.0
-        )
+        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=2.0)
 
         # Create two separate tree regions
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -428,9 +420,7 @@ class TestTreeDetectionService(unittest.TestCase):
         # All polygons should be valid (closed)
         for polygon in polygons:
             # First and last point should be the same (closed polygon)
-            self.assertEqual(
-                polygon.geo_polygon[0], polygon.geo_polygon[-1]
-            )
+            self.assertEqual(polygon.geo_polygon[0], polygon.geo_polygon[-1])
 
 
 if __name__ == "__main__":

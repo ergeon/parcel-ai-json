@@ -45,24 +45,29 @@ class PropertyDetections:
         for amenity in self.amenities:
             features.append(amenity.to_geojson_feature())
 
-        # Add tree polygon features if available
-        if self.trees.tree_polygons:
-            for tree_polygon in self.trees.tree_polygons:
-                features.append(tree_polygon.to_geojson_feature())
+        # Add tree bounding box features
+        for tree in self.trees.trees:
+            features.append(tree.to_geojson_feature())
 
-        # Add tree coverage metadata (not a spatial feature, but coverage info)
-        tree_coverage = {
-            "tree_coverage_percent": self.trees.tree_coverage_percent,
+        # Add tree detection metadata
+        tree_metadata = {
+            "tree_count": self.trees.tree_count,
         }
 
-        # Include tree polygon count if available
-        if self.trees.tree_polygons:
-            tree_coverage["tree_cluster_count"] = len(self.trees.tree_polygons)
+        # Include optional statistics if available
+        if self.trees.average_confidence is not None:
+            tree_metadata["average_confidence"] = round(
+                self.trees.average_confidence, 3
+            )
+        if self.trees.average_crown_area_sqm is not None:
+            tree_metadata["average_crown_area_sqm"] = round(
+                self.trees.average_crown_area_sqm, 2
+            )
 
         return {
             "type": "FeatureCollection",
             "features": features,
-            "tree_coverage": tree_coverage,
+            "trees": tree_metadata,
         }
 
     def summary(self) -> Dict:
@@ -73,13 +78,23 @@ class PropertyDetections:
             amenity_type = amenity.amenity_type
             amenity_counts[amenity_type] = amenity_counts.get(amenity_type, 0) + 1
 
-        return {
+        summary = {
             "vehicles": len(self.vehicles),
             "swimming_pools": len(self.swimming_pools),
             "amenities": amenity_counts,
             "total_amenities": len(self.amenities),
-            "tree_coverage_percent": self.trees.tree_coverage_percent,
+            "tree_count": self.trees.tree_count,
         }
+
+        # Add optional tree statistics if available
+        if self.trees.average_confidence is not None:
+            summary["average_tree_confidence"] = round(self.trees.average_confidence, 3)
+        if self.trees.average_crown_area_sqm is not None:
+            summary["average_crown_area_sqm"] = round(
+                self.trees.average_crown_area_sqm, 2
+            )
+
+        return summary
 
 
 class PropertyDetectionService:
@@ -96,8 +111,8 @@ class PropertyDetectionService:
         pool_confidence: float = 0.3,
         amenity_confidence: float = 0.3,
         device: str = "cpu",
-        tree_use_docker: bool = True,
-        tree_docker_image: str = "parcel-tree-detector",
+        tree_confidence: float = 0.1,
+        tree_model_name: str = "weecology/deepforest-tree",
     ):
         """Initialize property detection service.
 
@@ -107,8 +122,8 @@ class PropertyDetectionService:
             pool_confidence: Minimum confidence for pools (0.0-1.0)
             amenity_confidence: Minimum confidence for amenities (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
-            tree_use_docker: Whether to use Docker for tree detection (False for native)
-            tree_docker_image: Docker image for tree detection (when tree_use_docker=True)
+            tree_confidence: Minimum confidence for trees (0.0-1.0, default: 0.1)
+            tree_model_name: Hugging Face model name for DeepForest
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -129,9 +144,9 @@ class PropertyDetectionService:
             device=device,
         )
 
-        # Tree detection
+        # Tree detection with DeepForest
         self.tree_detector = TreeDetectionService(
-            use_docker=tree_use_docker, docker_image=tree_docker_image
+            model_name=tree_model_name, confidence_threshold=tree_confidence
         )
 
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:
