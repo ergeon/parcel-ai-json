@@ -567,6 +567,7 @@ def generate_examples(num_examples=20):
         detectree_extract_polygons=True,
         detectree_min_tree_area_pixels=50,  # Filter small noise
         detectree_simplify_tolerance_meters=0.5,  # Topology-preserving simplification
+        detectree_use_docker=False,  # Use native mode for polygon extraction
     )
 
     print("✓ Detector initialized (unified property detection with tree polygons)")

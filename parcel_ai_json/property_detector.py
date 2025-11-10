@@ -143,6 +143,7 @@ class PropertyDetectionService:
         detectree_extract_polygons: bool = True,
         detectree_min_tree_area_pixels: int = 50,
         detectree_simplify_tolerance_meters: float = 0.5,
+        detectree_use_docker: bool = False,
     ):
         """Initialize property detection service.
 
@@ -157,6 +158,7 @@ class PropertyDetectionService:
             detectree_extract_polygons: Extract tree cluster polygons from detectree
             detectree_min_tree_area_pixels: Minimum tree area in pixels for detectree
             detectree_simplify_tolerance_meters: Polygon simplification tolerance in meters
+            detectree_use_docker: Run detectree in Docker (True) or natively (False)
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -184,6 +186,7 @@ class PropertyDetectionService:
             detectree_extract_polygons=detectree_extract_polygons,
             detectree_min_tree_area_pixels=detectree_min_tree_area_pixels,
             detectree_simplify_tolerance_meters=detectree_simplify_tolerance_meters,
+            detectree_use_docker=detectree_use_docker,
         )
 
     def detect_all(self, satellite_image: Dict) -> PropertyDetections:
