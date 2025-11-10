@@ -151,7 +151,8 @@ class TreeDetectionService:
 
         Args:
             mask: Binary mask where 1 = tree, 0 = not tree
-            satellite_image: Satellite image metadata with center_lat, center_lon, zoom_level
+            satellite_image: Satellite image metadata with center_lat,
+                center_lon, zoom_level
             image_width: Image width in pixels
             image_height: Image height in pixels
 
@@ -175,13 +176,19 @@ class TreeDetectionService:
         # Initialize geoid for area calculations
         geod = Geod(ellps="WGS84")
 
-        # Find contours in the binary mask
         # Ensure mask is uint8
         mask_uint8 = mask.astype(np.uint8)
 
+        # Apply morphological closing to merge nearby tree fragments
+        # into continuous tree crowns (conservative to avoid false positives)
+        closing_kernel_size = 10  # pixels (about 1m at zoom 20)
+        closing_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                                   (closing_kernel_size, closing_kernel_size))
+        mask_processed = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, closing_kernel)
+
         # Find external contours only
         contours, _ = cv2.findContours(
-            mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            mask_processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
 
         tree_polygons = []
@@ -208,28 +215,6 @@ class TreeDetectionService:
             for x, y in pixel_polygon:
                 lon, lat = converter.pixel_to_geo(float(x), float(y))
                 geo_polygon.append((lon, lat))
-
-            # Simplify polygon if tolerance is set
-            if self.simplify_tolerance_meters > 0:
-                from shapely.geometry import Polygon
-                from shapely import simplify
-
-                # Create Shapely polygon
-                # (exclude closing point for construction)
-                shapely_poly = Polygon(geo_polygon[:-1])
-
-                # Simplify using Shapely's topology-preserving algorithm
-                # Convert meters to approximate degrees
-                # At equator: 1 degree ≈ 111,320 meters
-                tolerance_degrees = self.simplify_tolerance_meters / 111320.0
-                simplified_poly = simplify(
-                    shapely_poly,
-                    tolerance_degrees,
-                    preserve_topology=True,
-                )
-
-                # Extract coordinates from simplified polygon
-                geo_polygon = list(simplified_poly.exterior.coords)
 
             # Calculate area in square meters using geodesic calculations
             # For polygons, we use the geod.polygon_area_perimeter method

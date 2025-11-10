@@ -81,11 +81,15 @@ class TestPropertyDetections(unittest.TestCase):
         self.assertEqual(geojson["type"], "FeatureCollection")
         self.assertEqual(len(geojson["features"]), 3)  # vehicle + pool + amenity
 
-        # Check tree coverage metadata
+        # Check tree coverage metadata (only essential fields)
         self.assertIn("tree_coverage", geojson)
-        self.assertEqual(geojson["tree_coverage"]["tree_pixel_count"], 5000)
         self.assertEqual(geojson["tree_coverage"]["tree_coverage_percent"], 1.91)
-        self.assertEqual(geojson["tree_coverage"]["tree_mask_path"], "/tmp/trees.png")
+        # Internal fields should not be exposed
+        self.assertNotIn("tree_pixel_count", geojson["tree_coverage"])
+        self.assertNotIn("tree_mask_path", geojson["tree_coverage"])
+        self.assertNotIn("total_pixels", geojson["tree_coverage"])
+        self.assertNotIn("image_width", geojson["tree_coverage"])
+        self.assertNotIn("image_height", geojson["tree_coverage"])
 
     def test_to_geojson_no_tree_mask(self):
         """Test GeoJSON output when tree mask is not available."""
@@ -107,8 +111,12 @@ class TestPropertyDetections(unittest.TestCase):
 
         geojson = detections.to_geojson()
 
-        # Tree mask path should not be in response
+        # Internal fields should not be in response
         self.assertNotIn("tree_mask_path", geojson["tree_coverage"])
+        self.assertNotIn("tree_pixel_count", geojson["tree_coverage"])
+        self.assertNotIn("total_pixels", geojson["tree_coverage"])
+        # Only essential field should be present
+        self.assertIn("tree_coverage_percent", geojson["tree_coverage"])
 
     def test_summary(self):
         """Test summary statistics."""

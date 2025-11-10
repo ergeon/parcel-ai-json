@@ -35,13 +35,13 @@ def get_detector() -> PropertyDetectionService:
         logger.info(
             "Initializing PropertyDetectionService with tree polygon extraction..."
         )
-        # Create tree detector with polygon extraction and simplification
+        # Create tree detector with polygon extraction
         from parcel_ai_json.tree_detector import TreeDetectionService
         tree_detector = TreeDetectionService(
             use_docker=False,  # Use native detectree in container
             extract_polygons=True,  # Enable tree polygon extraction
-            min_tree_area_pixels=50,  # Filter small noise regions
-            simplify_tolerance_meters=1.0,  # Simplify polygons (1m tolerance)
+            min_tree_area_pixels=100,  # Filter tiny noise (1-2 m²)
+            simplify_tolerance_meters=0.0,  # Disable simplification
         )
 
         # Create property detector and inject custom tree detector

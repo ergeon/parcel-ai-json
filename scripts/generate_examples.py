@@ -178,21 +178,37 @@ def generate_folium_map(
     vehicle_group = folium.FeatureGroup(name="🚗 Vehicles", show=True)
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
     amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
+    tree_group = folium.FeatureGroup(name="🌳 Tree Clusters", show=True)
 
-    # Add vehicle, swimming pool, and amenity detections
+    # Add vehicle, swimming pool, amenity, and tree detections
     vehicle_count = 0
     pool_count = 0
     amenity_count = 0
+    tree_cluster_count = 0
 
     for feature in geojson_data["features"]:
         coords = feature["geometry"]["coordinates"][0]
         coords_swapped = [[c[1], c[0]] for c in coords]  # Swap to [lat, lon]
 
         feature_type = feature["properties"].get("feature_type", "vehicle")
-        confidence = feature["properties"]["confidence"]
-        pixel_bbox = feature["properties"]["pixel_bbox"]
 
-        if feature_type == "swimming_pool":
+        if feature_type == "tree_cluster":
+            tree_cluster_count += 1
+            area_sqm = feature["properties"]["area_sqm"]
+            area_pixels = feature["properties"]["area_pixels"]
+            popup_html = f"""
+            <b>Tree Cluster</b><br>
+            Area: {area_sqm:.1f} m²<br>
+            Pixels: {area_pixels}
+            """
+            tooltip_text = f"Tree Cluster ({area_sqm:.1f} m²)"
+            label_text = f"{area_sqm:.0f}m²"
+            fill_color = "#228B22"  # Forest green for trees
+            line_color = "#1B6B1B"
+            feature_group = tree_group
+        elif feature_type == "swimming_pool":
+            confidence = feature["properties"]["confidence"]
+            pixel_bbox = feature["properties"]["pixel_bbox"]
             pool_count += 1
             area_sqm = feature["properties"]["area_sqm"]
             popup_html = f"""
@@ -233,6 +249,8 @@ def generate_folium_map(
             line_color = "#CC5500"
             feature_group = amenity_group
         else:
+            confidence = feature["properties"]["confidence"]
+            pixel_bbox = feature["properties"]["pixel_bbox"]
             vehicle_count += 1
             vehicle_class = feature["properties"]["vehicle_class"]
             popup_html = f"""
@@ -284,6 +302,7 @@ def generate_folium_map(
     vehicle_group.add_to(m)
     pool_group.add_to(m)
     amenity_group.add_to(m)
+    tree_group.add_to(m)
 
     # Add layer control with checkboxes
     folium.LayerControl(collapsed=False).add_to(m)
@@ -291,11 +310,11 @@ def generate_folium_map(
     # Add title
     title_html = f"""
         <div style="position: fixed;
-                    top: 10px; left: 50px; width: 700px; height: 90px;
+                    top: 10px; left: 50px; width: 800px; height: 90px;
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_coverage_percent:.1f}%
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_coverage_percent:.1f}%
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -523,14 +542,27 @@ def generate_examples(num_examples=20):
     print("  Models will be downloaded to ~/.ultralytics/ on first use")
 
     from parcel_ai_json import PropertyDetectionService
+    from parcel_ai_json.tree_detector import TreeDetectionService
 
+    # Create tree detector with polygon extraction
+    tree_detector = TreeDetectionService(
+        use_docker=False,  # Use native detectree
+        extract_polygons=True,  # Enable tree polygon extraction
+        min_tree_area_pixels=500,  # Filter small fragments (5-10 m²)
+        simplify_tolerance_meters=0.0,  # Disable simplification
+    )
+
+    # Create property detector with custom tree detector
     detector = PropertyDetectionService(
         vehicle_confidence=0.25,
         pool_confidence=0.3,
         amenity_confidence=0.3,
     )
 
-    print("✓ Detector initialized (unified property detection)")
+    # Inject custom tree detector
+    detector.tree_detector = tree_detector
+
+    print("✓ Detector initialized (unified property detection with tree polygons)")
 
     # Get list of available satellite images
     satellite_images = list(satellite_dir.glob("*.jpg"))

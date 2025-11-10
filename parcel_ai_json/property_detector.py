@@ -53,15 +53,7 @@ class PropertyDetections:
         # Add tree coverage metadata (not a spatial feature, but coverage info)
         tree_coverage = {
             "tree_coverage_percent": self.trees.tree_coverage_percent,
-            "tree_pixel_count": self.trees.tree_pixel_count,
-            "total_pixels": self.trees.total_pixels,
-            "image_width": self.trees.width,
-            "image_height": self.trees.height,
         }
-
-        # Include tree mask path if available
-        if self.trees.tree_mask_path:
-            tree_coverage["tree_mask_path"] = self.trees.tree_mask_path
 
         # Include tree polygon count if available
         if self.trees.tree_polygons:
