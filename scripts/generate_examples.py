@@ -80,7 +80,7 @@ def generate_folium_map(
     image_name,
     center_lat,
     center_lon,
-    tree_coverage_percent=0.0,
+    tree_count=0.0,
 ):
     """Generate interactive Folium map with satellite imagery and vehicle detections.
 
@@ -178,7 +178,7 @@ def generate_folium_map(
     vehicle_group = folium.FeatureGroup(name="🚗 Vehicles", show=True)
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
     amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
-    tree_group = folium.FeatureGroup(name="🌳 Tree Clusters", show=True)
+    tree_group = folium.FeatureGroup(name="🌳 Trees (DeepForest)", show=True)
 
     # Add vehicle, swimming pool, amenity, and tree detections
     vehicle_count = 0
@@ -203,6 +203,19 @@ def generate_folium_map(
             """
             tooltip_text = f"Tree Cluster ({area_sqm:.1f} m²)"
             label_text = f"{area_sqm:.0f}m²"
+            fill_color = "#228B22"  # Forest green for trees
+            line_color = "#1B6B1B"
+            feature_group = tree_group
+        elif feature_type == "tree":
+            # DeepForest tree bounding box
+            tree_cluster_count += 1
+            confidence = feature["properties"]["confidence"]
+            popup_html = f"""
+            <b>Tree Detection (DeepForest)</b><br>
+            Confidence: {confidence:.1%}
+            """
+            tooltip_text = f"Tree ({confidence:.1%})"
+            label_text = "🌳"
             fill_color = "#228B22"  # Forest green for trees
             line_color = "#1B6B1B"
             feature_group = tree_group
@@ -314,7 +327,7 @@ def generate_folium_map(
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_coverage_percent:.1f}%
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_count:.1f}%
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -542,25 +555,15 @@ def generate_examples(num_examples=20):
     print("  Models will be downloaded to ~/.ultralytics/ on first use")
 
     from parcel_ai_json import PropertyDetectionService
-    from parcel_ai_json.tree_detector import TreeDetectionService
 
-    # Create tree detector with polygon extraction
-    tree_detector = TreeDetectionService(
-        use_docker=False,  # Use native detectree
-        extract_polygons=True,  # Enable tree polygon extraction
-        min_tree_area_pixels=500,  # Filter small fragments (5-10 m²)
-        simplify_tolerance_meters=0.0,  # Disable simplification
-    )
-
-    # Create property detector with custom tree detector
+    # Create property detector with combined tree detection (DeepForest + detectree)
     detector = PropertyDetectionService(
         vehicle_confidence=0.25,
         pool_confidence=0.3,
         amenity_confidence=0.3,
+        tree_confidence=0.1,  # Low threshold to detect more trees with DeepForest
+        tree_model_name="weecology/deepforest-tree",
     )
-
-    # Inject custom tree detector
-    detector.tree_detector = tree_detector
 
     print("✓ Detector initialized (unified property detection with tree polygons)")
 
@@ -638,7 +641,7 @@ def generate_examples(num_examples=20):
             print(
                 f"  ✓ Detected: {summary['vehicles']} vehicles, "
                 f"{summary['swimming_pools']} pools, amenities: {amenity_summary}, "
-                f"tree coverage: {summary['tree_coverage_percent']:.1f}%"
+                f"tree coverage: {summary['tree_count']:.1f}%"
             )
 
             # Save to geojson subdirectory
@@ -659,7 +662,7 @@ def generate_examples(num_examples=20):
                     "vehicles_detected": summary["vehicles"],
                     "pools_detected": summary["swimming_pools"],
                     "amenities_detected": summary["total_amenities"],
-                    "tree_coverage_percent": summary["tree_coverage_percent"],
+                    "tree_count": summary["tree_count"],
                     "output_file": output_filename,
                     "coordinates": {"lat": lat, "lon": lon},
                     "geojson": combined_geojson,
@@ -755,7 +758,7 @@ def generate_examples(num_examples=20):
             image_name=img_name,
             center_lat=result["coordinates"]["lat"],
             center_lon=result["coordinates"]["lon"],
-            tree_coverage_percent=result.get("tree_coverage_percent", 0.0),
+            tree_count=result.get("tree_count", 0.0),
         )
 
     print(f"✓ Generated {len(results)} Folium maps in: {folium_dir}")

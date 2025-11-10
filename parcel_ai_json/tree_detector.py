@@ -675,7 +675,7 @@ class CombinedTreeDetectionService:
         # detectree parameters
         detectree_use_docker: bool = True,
         detectree_docker_image: str = "parcel-tree-detector",
-        detectree_save_mask: bool = True,
+        detectree_save_mask: bool = False,  # Disable mask, use polygons instead
         detectree_extract_polygons: bool = True,
         detectree_min_tree_area_pixels: int = 50,
         detectree_simplify_tolerance_meters: float = 0.5,
