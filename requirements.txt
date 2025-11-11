@@ -13,6 +13,10 @@ pyproj>=3.0.0           # Geodesic coordinate transformations
 deepforest>=2.0.0
 detectree==0.8.0      # Tree coverage detection (pixel-level classification)
 
+# SAM - Segment Anything Model for general-purpose segmentation
+git+https://github.com/facebookresearch/segment-anything.git  # Zero-shot segmentation
+opencv-python>=4.8.0  # Required for SAM polygon extraction from masks
+
 # API dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
