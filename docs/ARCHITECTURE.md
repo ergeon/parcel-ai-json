@@ -31,17 +31,33 @@ Standalone AI/ML package for vehicle detection in satellite imagery using YOLOv8
 ### Package Structure
 ```
 parcel-ai-json/
-├── parcel_ai_json/
-│   ├── __init__.py              # Exports: VehicleDetectionService
-│   ├── vehicle_detector.py      # YOLOv8-OBB vehicle detection
-│   └── coordinate_converter.py  # Geodesic coordinate transformations
-├── tests/
-│   └── test_vehicle_detector.py # 16 tests for vehicle detection
-├── examples/
-│   └── detect_vehicles_example.py
+├── parcel_ai_json/          # Core detection services
+│   ├── __init__.py
+│   ├── vehicle_detector.py
+│   ├── swimming_pool_detector.py
+│   ├── amenity_detector.py
+│   ├── tree_detector.py     # DeepForest + detectree
+│   └── property_detector.py # Unified detector
+├── tests/                   # Test suite
+│   ├── test_vehicle_detector.py
+│   ├── test_swimming_pool_detector.py
+│   ├── test_amenity_detector.py
+│   └── test_property_detector.py
+├── docker/                  # Docker configurations
+│   ├── Dockerfile
+│   ├── Dockerfile.tree
+│   └── docker-compose.yml
+├── docs/                    # Documentation
+│   ├── ARCHITECTURE.md
+│   └── DOCKER_MIGRATION.md
+├── models/                  # Model files (git-ignored)
+│   └── README.md           # Model management guide
+├── scripts/                 # Utility scripts
+│   └── generate_examples.py
+├── examples/                # Example outputs
 ├── setup.py
-├── README.md
-└── .gitignore
+├── Makefile
+└── README.md
 ```
 
 ### Integration with parcel-geojson

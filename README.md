@@ -24,13 +24,13 @@ The recommended deployment method is using Docker, which bundles all dependencie
 
 ```bash
 # Build the Docker image
-docker build -t parcel-ai-json:latest .
+docker build -f docker/Dockerfile -t parcel-ai-json:latest .
 
 # Run the service
 docker run -p 8000:8000 parcel-ai-json:latest
 
 # Or use Docker Compose
-docker-compose up -d
+docker-compose -f docker/docker-compose.yml up -d
 ```
 
 The API will be available at `http://localhost:8000`
@@ -300,18 +300,31 @@ This is a **containerized microservice** with a FastAPI REST API.
 - Pre-bundled models (no first-run downloads)
 - Ready for Kubernetes, ECS, or Docker Compose
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical documentation.
 
 ## Performance
 
 - Vehicle detection: ~7.5s per address (98% of total time)
 - Core GeoJSON generation: ~0.16s per address
 
-## Model Auto-Download
+## Model Management
 
 The package uses `yolov8m-obb.pt` (51MB) - YOLOv8 medium model with Oriented Bounding Boxes, trained on DOTA aerial imagery dataset.
 
-**The model is automatically downloaded on first use** to `~/.ultralytics/` by the ultralytics library. This keeps the package size small (~1MB instead of ~50MB).
+**Model Auto-Download:**
+Models are automatically downloaded on first use by the ultralytics library. The detection services check for models in this order:
+1. Local `models/` directory (for manual model placement)
+2. `~/.ultralytics/` directory (auto-downloaded)
+
+**To manually place models:**
+```bash
+# Download models to the models/ directory
+mkdir -p models
+cd models
+# Place your .pt model files here
+```
+
+See `models/README.md` for more details on model management.
 
 ## Development
 

@@ -114,7 +114,7 @@ tag: ## Create and push git tag for current version (must be on master)
 
 docker-build: ## Build Docker image
 	@echo "Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)..."
-	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	docker build -f docker/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 	@echo "Docker image built successfully!"
 	@echo "Run 'make docker-run' to start the service"
 
@@ -166,18 +166,18 @@ docker-clean: ## Remove Docker image and clean build cache
 
 docker-up: ## Start services with Docker Compose
 	@echo "Starting services with Docker Compose..."
-	docker-compose up -d
+	docker-compose -f docker/docker-compose.yml up -d
 	@echo ""
 	@echo "Services started!"
 	@echo "  API:      http://localhost:8000"
 	@echo "  Docs:     http://localhost:8000/docs"
 	@echo ""
-	@echo "View logs:  docker-compose logs -f"
+	@echo "View logs:  docker-compose -f docker/docker-compose.yml logs -f"
 	@echo "Stop:       make docker-down"
 
 docker-down: ## Stop Docker Compose services
 	@echo "Stopping Docker Compose services..."
-	docker-compose down
+	docker-compose -f docker/docker-compose.yml down
 	@echo "Services stopped"
 
 docker-restart: docker-stop docker-run ## Restart Docker container
