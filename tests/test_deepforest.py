@@ -10,7 +10,9 @@ from pathlib import Path
 import sys
 
 # Use the Fort Worth image from examples
-test_image = Path("output/examples/images/528_beechgrove_terrace_fort_worth_tx_76140.jpg")
+test_image = Path(
+    "output/examples/images/528_beechgrove_terrace_fort_worth_tx_76140.jpg"
+)
 
 if not test_image.exists():
     print(f"ERROR: Could not find test image at {test_image}")
@@ -34,34 +36,34 @@ boxes = m.predict_image(path=str(test_image))
 
 # Display results
 print(f"\n{'=' * 80}")
-print(f"RESULTS")
+print("RESULTS")
 print(f"{'=' * 80}")
 print(f"Number of trees detected: {len(boxes)}")
 
 if len(boxes) > 0:
-    print(f"\nFirst 10 detections:")
+    print("\nFirst 10 detections:")
     print(boxes.head(10).to_string())
 
     print(f"\n{'=' * 80}")
-    print(f"STATISTICS")
+    print("STATISTICS")
     print(f"{'=' * 80}")
     print(f"Average confidence: {boxes['score'].mean():.3f}")
     print(f"Min confidence: {boxes['score'].min():.3f}")
     print(f"Max confidence: {boxes['score'].max():.3f}")
 
     # Calculate average crown size
-    boxes['width'] = boxes['xmax'] - boxes['xmin']
-    boxes['height'] = boxes['ymax'] - boxes['ymin']
-    boxes['area'] = boxes['width'] * boxes['height']
+    boxes["width"] = boxes["xmax"] - boxes["xmin"]
+    boxes["height"] = boxes["ymax"] - boxes["ymin"]
+    boxes["area"] = boxes["width"] * boxes["height"]
 
     print(f"\nAverage crown size (pixels): {boxes['area'].mean():.1f}")
     print(f"Min crown size (pixels): {boxes['area'].min():.1f}")
     print(f"Max crown size (pixels): {boxes['area'].max():.1f}")
 
     print(f"\n{'=' * 80}")
-    print(f"COMPARISON WITH DETECTREE")
+    print("COMPARISON WITH DETECTREE")
     print(f"{'=' * 80}")
-    print(f"detectree: 0.33% coverage, 3 tiny clusters")
+    print("detectree: 0.33% coverage, 3 tiny clusters")
     print(f"DeepForest: {len(boxes)} individual tree crowns detected")
 
 else:

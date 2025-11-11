@@ -7,13 +7,11 @@ and generates GeoJSON files with vehicle detections.
 
 import json
 import csv
-import re
 import shutil
 import base64
 from pathlib import Path
 import folium
 from folium import plugins
-from parcel_ai_json import VehicleDetectionService
 
 
 def load_quote_coordinates(csv_path):
@@ -597,7 +595,7 @@ def generate_examples(num_examples=20):
 
             # Skip if address parsing failed
             if address_info is None:
-                print(f"  ⚠ Skipping (unable to parse filename)")
+                print("  ⚠ Skipping (unable to parse filename)")
                 skipped += 1
                 continue
 

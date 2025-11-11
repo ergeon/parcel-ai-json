@@ -226,7 +226,6 @@ class DeepForestService:
 
         # Run detection
         try:
-            import pandas as pd
             from PIL import Image
             from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
             from pyproj import Geod
