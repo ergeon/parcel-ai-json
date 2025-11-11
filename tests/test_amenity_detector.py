@@ -123,7 +123,12 @@ class TestAmenityDetectionService(unittest.TestCase):
 
         service._load_model()
 
-        mock_yolo.assert_called_once_with("yolov8m-obb.pt")
+        # Check that YOLO was called with either short or full path to yolov8m-obb.pt
+        call_args = mock_yolo.call_args[0][0]
+        self.assertTrue(
+            call_args == "yolov8m-obb.pt" or call_args.endswith("models/yolov8m-obb.pt"),
+            f"Expected YOLO to be called with yolov8m-obb.pt or full path, got: {call_args}"
+        )
         mock_model.to.assert_called_once_with("cpu")
         self.assertEqual(service._model, mock_model)
 

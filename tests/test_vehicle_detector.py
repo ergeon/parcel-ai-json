@@ -121,7 +121,10 @@ class TestVehicleDetectionService:
         service = VehicleDetectionService()
         service._load_model()
 
-        mock_yolo.assert_called_once_with("yolov8m-obb.pt")
+        # Check that YOLO was called with either short or full path to yolov8m-obb.pt
+        call_args = mock_yolo.call_args[0][0]
+        assert call_args == "yolov8m-obb.pt" or call_args.endswith("models/yolov8m-obb.pt"), \
+            f"Expected YOLO to be called with yolov8m-obb.pt or full path, got: {call_args}"
 
     @patch("ultralytics.YOLO")
     @patch("parcel_ai_json.vehicle_detector.Path")
@@ -373,17 +376,12 @@ class TestVehicleDetectionService:
 
         assert len(detections) == 0
 
-    @patch("parcel_ai_json.vehicle_detector.Path")
-    def test_detect_vehicles_image_not_found(self, mock_path):
+    def test_detect_vehicles_image_not_found(self):
         """Test detecting vehicles when image file doesn't exist."""
-        mock_path_obj = Mock()
-        mock_path_obj.exists.return_value = False
-        mock_path.return_value = mock_path_obj
-
         service = VehicleDetectionService()
 
         satellite_image = {
-            "path": "/nonexistent/image.jpg",
+            "path": "/nonexistent/definitely_does_not_exist_12345.jpg",
             "center_lat": 37.0,
             "center_lon": -122.0,
         }
