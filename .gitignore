@@ -48,9 +48,9 @@ Thumbs.db
 .storage/
 output/
 
-# Downloaded YOLO models (keep bundled models in parcel_ai_json/models/)
+# Downloaded YOLO models (large files, downloaded automatically)
+models/*.pt
 *.pt
-!parcel_ai_json/models/*.pt
 
 # Deployment credentials
 pypirc.conf

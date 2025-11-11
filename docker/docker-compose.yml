@@ -12,8 +12,8 @@ version: '3.8'
 services:
   parcel-ai-api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     image: parcel-ai-json:latest
     container_name: parcel-ai-json
     ports:

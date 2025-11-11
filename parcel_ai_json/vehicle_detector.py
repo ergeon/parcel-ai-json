@@ -115,6 +115,10 @@ class VehicleDetectionService:
         # Use default OBB model if not specified
         if self.model_path is None:
             model_file = "yolov8m-obb.pt"  # Best for aerial imagery
+            # Check models/ directory first
+            models_dir = Path(__file__).parent.parent / "models"
+            if (models_dir / model_file).exists():
+                model_file = str(models_dir / model_file)
         else:
             model_file = self.model_path
 

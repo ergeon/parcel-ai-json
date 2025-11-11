@@ -89,7 +89,14 @@ class SwimmingPoolDetectionService:
             )
 
         # Use YOLOv8m-OBB (DOTA dataset includes swimming pool class)
-        model_file = self.model_path or "yolov8m-obb.pt"
+        if self.model_path is None:
+            model_file = "yolov8m-obb.pt"
+            # Check models/ directory first
+            models_dir = Path(__file__).parent.parent / "models"
+            if (models_dir / model_file).exists():
+                model_file = str(models_dir / model_file)
+        else:
+            model_file = self.model_path
 
         print(f"Loading YOLOv8-OBB model: {model_file}")
         print("  Model will be downloaded to ~/.ultralytics/ on first use")
