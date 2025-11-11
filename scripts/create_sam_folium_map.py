@@ -86,7 +86,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     vehicle_service = VehicleDetectionService(confidence_threshold=0.25)
     pool_service = SwimmingPoolDetectionService(confidence_threshold=0.3)
     amenity_service = AmenityDetectionService(confidence_threshold=0.3)
-    tree_service = TreeDetectionService()
+    tree_service = TreeDetectionService(detectree_use_docker=False)  # Use native mode inside Docker
 
     vehicles = vehicle_service.detect_vehicles(satellite_image)
     pools = pool_service.detect_swimming_pools(satellite_image)
@@ -106,7 +106,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Found {len(detections.vehicles)} vehicles")
     print(f"   ✓ Found {len(detections.swimming_pools)} pools")
     print(f"   ✓ Found {len(detections.amenities)} amenities")
-    print(f"   ✓ Found {len(detections.trees)} trees")
+    tree_count = detections.trees.tree_count if detections.trees else 0
+    polygon_count = len(detections.trees.tree_polygons) if detections.trees and detections.trees.tree_polygons else 0
+    print(f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)")
 
     # Get image dimensions
     from PIL import Image
@@ -166,8 +168,12 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     amenities_group = folium.FeatureGroup(
         name=f"Amenities ({len(detections.amenities)})", show=True
     )
-    trees_group = folium.FeatureGroup(
-        name=f"Trees ({len(detections.trees)})", show=True
+    # Separate feature groups for DeepForest and detectree
+    deepforest_group = folium.FeatureGroup(
+        name=f"Trees - DeepForest ({tree_count})", show=True
+    )
+    detectree_group = folium.FeatureGroup(
+        name=f"Tree Coverage - detectree ({polygon_count})", show=True
     )
 
     # Add SAM segments with semi-transparent fill
@@ -263,30 +269,61 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
 
     # Add trees with green markers
     print("8. Adding trees to map...")
-    for tree in detections.trees:
-        folium.Polygon(
-            locations=[(lat, lon) for lon, lat in tree.geo_polygon],
-            color="#228B22",  # Forest green
-            weight=2,
-            fill=True,
-            fillColor="#228B22",
-            fillOpacity=0.5,
-            popup=folium.Popup(
-                f"<b>Tree</b><br>"
-                f"Detection: {tree.detection_method}<br>"
-                f"Confidence: {tree.confidence:.2f}<br>"
-                f"Area: {tree.area_sqm:.1f} m²",
-                max_width=200,
-            ),
-            tooltip="Tree",
-        ).add_to(trees_group)
+
+    # Add individual tree bounding boxes from DeepForest
+    if detections.trees and detections.trees.trees:
+        for i, tree_bbox in enumerate(detections.trees.trees):
+            # Convert geo_bbox to polygon coordinates
+            lon_min, lat_min, lon_max, lat_max = tree_bbox.geo_bbox
+            bbox_polygon = [
+                (lon_min, lat_min),
+                (lon_max, lat_min),
+                (lon_max, lat_max),
+                (lon_min, lat_max),
+                (lon_min, lat_min),
+            ]
+
+            folium.Polygon(
+                locations=[(lat, lon) for lon, lat in bbox_polygon],
+                color="#228B22",  # Forest green
+                weight=2,
+                fill=True,
+                fillColor="#228B22",
+                fillOpacity=0.3,
+                popup=folium.Popup(
+                    f"<b>Individual Tree (DeepForest)</b><br>"
+                    f"Confidence: {tree_bbox.confidence:.2f}",
+                    max_width=200,
+                ),
+                tooltip=f"Tree #{i+1}",
+            ).add_to(deepforest_group)
+
+    # Add tree coverage polygons from detectree
+    if detections.trees and detections.trees.tree_polygons:
+        for i, tree_poly in enumerate(detections.trees.tree_polygons):
+            folium.Polygon(
+                locations=[(lat, lon) for lon, lat in tree_poly.geo_polygon],
+                color="#006400",  # Dark green for coverage
+                weight=2,
+                fill=True,
+                fillColor="#006400",
+                fillOpacity=0.4,
+                popup=folium.Popup(
+                    f"<b>Tree Coverage (detectree)</b><br>"
+                    f"Area: {tree_poly.area_sqm:.1f} m²<br>"
+                    f"Pixels: {tree_poly.area_pixels}",
+                    max_width=200,
+                ),
+                tooltip=f"Tree Cluster #{i+1}",
+            ).add_to(detectree_group)
 
     # Add all groups to map
     sam_group.add_to(m)
     vehicles_group.add_to(m)
     pools_group.add_to(m)
     amenities_group.add_to(m)
-    trees_group.add_to(m)
+    deepforest_group.add_to(m)
+    detectree_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)
@@ -297,7 +334,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     # Add legend
     legend_html = """
     <div style="position: fixed;
-                bottom: 50px; right: 50px; width: 220px; height: auto;
+                bottom: 50px; right: 50px; width: 250px; height: auto;
                 background-color: white; z-index:9999; font-size:14px;
                 border:2px solid grey; border-radius: 5px; padding: 10px">
     <p style="margin:0; font-weight: bold; text-align: center;">Legend</p>
@@ -307,7 +344,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     <p style="margin:5px 0;"><span style="color:#800080;">●</span> Vehicles</p>
     <p style="margin:5px 0;"><span style="color:#0066cc;">●</span> Swimming Pools</p>
     <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities</p>
-    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees</p>
+    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees (DeepForest)</p>
+    <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Coverage (detectree)</p>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
@@ -335,7 +373,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"  - Vehicles: {len(detections.vehicles)}")
     print(f"  - Swimming pools: {len(detections.swimming_pools)}")
     print(f"  - Amenities: {len(detections.amenities)}")
-    print(f"  - Trees: {len(detections.trees)}")
+    print(f"  - Trees (DeepForest): {tree_count}")
+    print(f"  - Tree polygons (detectree): {polygon_count}")
     print(f"\nOpen the HTML file in your browser to explore!")
 
 

@@ -22,8 +22,9 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 
-# Optional: Visualization (folium maps)
-# folium>=0.14.0
+# Visualization (folium maps, matplotlib)
+folium>=0.14.0
+matplotlib>=3.5.0
 
 # Development dependencies (install with: pip install -e ".[dev]")
 # pytest>=7.0.0
