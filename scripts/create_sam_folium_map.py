@@ -33,13 +33,28 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    # Extract coordinates from filename (format: address_city_state_zip.jpg)
-    # For now, use hardcoded coordinates (will improve later)
-    # TODO: Extract from image metadata or geocode address
+    # Extract state from filename and use approximate coordinates
+    # Format: address_city_state_zip.jpg
+    parts = image_path.stem.split("_")
+    state_code = parts[-2] if len(parts) > 2 else "ca"
+
+    # Better default coordinates by state
+    state_centers = {
+        "ca": (36.7783, -119.4179),  # California center
+        "nj": (40.0583, -74.4057),  # New Jersey
+        "tx": (31.9686, -99.9018),  # Texas
+    }
+
+    # Special case for Vacaville, CA (detected from city name)
+    if "vacaville" in image_path.stem.lower():
+        center_lat, center_lon = 38.3566, -121.9877
+    else:
+        center_lat, center_lon = state_centers.get(state_code.lower(), (37.0, -122.0))
+
     satellite_image = {
         "path": str(image_path),
-        "center_lat": 37.7749,  # Placeholder
-        "center_lon": -122.4194,  # Placeholder
+        "center_lat": center_lat,
+        "center_lon": center_lon,
         "zoom_level": 20,
     }
 
@@ -86,13 +101,31 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Found {len(detections.swimming_pools)} pools")
     print(f"   ✓ Found {len(detections.amenities)} amenities")
 
-    # Get image dimensions and center coordinates
+    # Get image dimensions
     from PIL import Image
     with Image.open(image_path) as img:
         img_width, img_height = img.size
 
     center_lat = satellite_image["center_lat"]
     center_lon = satellite_image["center_lon"]
+
+    # Use ImageCoordinateConverter for accurate bounds calculation
+    from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+
+    converter = ImageCoordinateConverter(
+        center_lat=center_lat,
+        center_lon=center_lon,
+        image_width_px=img_width,
+        image_height_px=img_height,
+        zoom_level=20,
+    )
+
+    # Get accurate image bounds
+    image_bounds_dict = converter.get_image_bounds()
+    bounds = [
+        [image_bounds_dict["south"], image_bounds_dict["west"]],
+        [image_bounds_dict["north"], image_bounds_dict["east"]],
+    ]
 
     # Create folium map
     print("3. Creating folium map...")
@@ -103,23 +136,6 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         max_zoom=22,
         min_zoom=10,
     )
-
-    # Calculate image bounds (approximate)
-    # Using ~0.15m per pixel at zoom 20
-    meters_per_pixel = 0.15
-    half_width_m = (img_width / 2) * meters_per_pixel
-    half_height_m = (img_height / 2) * meters_per_pixel
-
-    from pyproj import Geod
-    geod = Geod(ellps="WGS84")
-
-    # Calculate corners
-    west_lon, _, _ = geod.fwd(center_lon, center_lat, 270, half_width_m)
-    east_lon, _, _ = geod.fwd(center_lon, center_lat, 90, half_width_m)
-    _, south_lat, _ = geod.fwd(center_lon, center_lat, 180, half_height_m)
-    _, north_lat, _ = geod.fwd(center_lon, center_lat, 0, half_height_m)
-
-    bounds = [[south_lat, west_lon], [north_lat, east_lon]]
 
     # Add satellite image overlay
     folium.raster_layers.ImageOverlay(
