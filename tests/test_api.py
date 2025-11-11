@@ -51,11 +51,15 @@ class TestAPI(unittest.TestCase):
             swimming_pools=[],
             amenities=[],
             trees=TreeDetection(
-                tree_pixel_count=5000,
+                trees=[],  # DeepForest individual trees
+                tree_count=0,
+                average_confidence=None,
+                average_crown_area_sqm=None,
+                tree_pixel_count=5000,  # detectree coverage
                 total_pixels=262144,
                 tree_coverage_percent=1.91,
-                width=512,
-                height=512,
+                tree_polygons=None,
+                tree_mask_path=None,
             ),
         )
         mock_detector.detect_all.return_value = mock_detections

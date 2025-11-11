@@ -171,7 +171,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_extract_tree_polygons_from_mask(self):
         """Test extracting tree polygons from binary mask."""
-        service = TreeDetectionService(use_docker=False)
+        service = TreeDetectionService(detectree_use_docker=False)
 
         # Create a simple binary mask with two tree regions
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -204,7 +204,9 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_extract_tree_polygons_filters_small_areas(self):
         """Test that small noise regions are filtered out."""
-        service = TreeDetectionService(use_docker=False, min_tree_area_pixels=100)
+        service = TreeDetectionService(
+            detectree_use_docker=False, detectree_min_tree_area_pixels=100
+        )
 
         # Create mask with one large region and one small noise region
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -229,7 +231,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_extract_tree_polygons_empty_mask(self):
         """Test extracting polygons from empty mask."""
-        service = TreeDetectionService(use_docker=False)
+        service = TreeDetectionService(detectree_use_docker=False)
 
         # Empty mask
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -251,7 +253,9 @@ class TestTreeDetectionService(unittest.TestCase):
     def test_detect_trees_with_polygons_native(self, mock_classifier_class):
         """Test tree detection with polygon extraction in native mode."""
         service = TreeDetectionService(
-            use_docker=False, extract_polygons=True, min_tree_area_pixels=50
+            detectree_use_docker=False,
+            detectree_extract_polygons=True,
+            detectree_min_tree_area_pixels=50,
         )
 
         # Mock detectree classifier
@@ -303,7 +307,9 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_detect_trees_without_polygons(self):
         """Test tree detection without polygon extraction."""
-        service = TreeDetectionService(use_docker=False, extract_polygons=False)
+        service = TreeDetectionService(
+            detectree_use_docker=False, detectree_extract_polygons=False
+        )
 
         with patch("detectree.Classifier") as mock_classifier_class:
             mock_clf = Mock()
@@ -341,7 +347,9 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification(self):
         """Test polygon simplification reduces vertex count."""
-        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=1.0)
+        service = TreeDetectionService(
+            detectree_use_docker=False, detectree_simplify_tolerance_meters=1.0
+        )
 
         # Create a complex polygon with many vertices
         mask = np.zeros((100, 100), dtype=np.uint8)
@@ -366,7 +374,9 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification_disabled(self):
         """Test that simplification can be disabled."""
-        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=0.0)
+        service = TreeDetectionService(
+            detectree_use_docker=False, detectree_simplify_tolerance_meters=0.0
+        )
 
         mask = np.zeros((100, 100), dtype=np.uint8)
         mask[20:80, 20:80] = 1
@@ -383,7 +393,7 @@ class TestTreeDetectionService(unittest.TestCase):
 
         # Now with simplification
         service_simplified = TreeDetectionService(
-            use_docker=False, simplify_tolerance_meters=1.0
+            detectree_use_docker=False, detectree_simplify_tolerance_meters=1.0
         )
         polygons_simplified = service_simplified._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
@@ -397,7 +407,9 @@ class TestTreeDetectionService(unittest.TestCase):
 
     def test_polygon_simplification_preserves_topology(self):
         """Test that simplification preserves polygon validity."""
-        service = TreeDetectionService(use_docker=False, simplify_tolerance_meters=2.0)
+        service = TreeDetectionService(
+            detectree_use_docker=False, detectree_simplify_tolerance_meters=2.0
+        )
 
         # Create two separate tree regions
         mask = np.zeros((100, 100), dtype=np.uint8)
