@@ -11,15 +11,12 @@ This script generates an enhanced folium map showing:
 
 import sys
 from pathlib import Path
-import json
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.sam_segmentation import SAMSegmentationService
-from parcel_ai_json.property_detector import PropertyDetectionService
-import folium
-from folium import plugins
+from parcel_ai_json.sam_segmentation import SAMSegmentationService  # noqa: E402
+import folium  # noqa: E402
 
 
 def create_enhanced_folium_map(image_path: str, output_path: str):
@@ -86,7 +83,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     vehicle_service = VehicleDetectionService(confidence_threshold=0.25)
     pool_service = SwimmingPoolDetectionService(confidence_threshold=0.3)
     amenity_service = AmenityDetectionService(confidence_threshold=0.3)
-    tree_service = TreeDetectionService(detectree_use_docker=False)  # Use native mode inside Docker
+    tree_service = TreeDetectionService(
+        detectree_use_docker=False
+    )  # Use native mode inside Docker
 
     vehicles = vehicle_service.detect_vehicles(satellite_image)
     pools = pool_service.detect_swimming_pools(satellite_image)
@@ -107,8 +106,14 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Found {len(detections.swimming_pools)} pools")
     print(f"   ✓ Found {len(detections.amenities)} amenities")
     tree_count = detections.trees.tree_count if detections.trees else 0
-    polygon_count = len(detections.trees.tree_polygons) if detections.trees and detections.trees.tree_polygons else 0
-    print(f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)")
+    polygon_count = (
+        len(detections.trees.tree_polygons)
+        if detections.trees and detections.trees.tree_polygons
+        else 0
+    )
+    print(
+        f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)"
+    )
 
     # Get image dimensions
     from PIL import Image
@@ -368,14 +373,14 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     m.save(str(output_path))
 
     print(f"\n✓ Enhanced folium map saved to: {output_path}")
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  - SAM segments: {len(sam_segments)}")
     print(f"  - Vehicles: {len(detections.vehicles)}")
     print(f"  - Swimming pools: {len(detections.swimming_pools)}")
     print(f"  - Amenities: {len(detections.amenities)}")
     print(f"  - Trees (DeepForest): {tree_count}")
     print(f"  - Tree polygons (detectree): {polygon_count}")
-    print(f"\nOpen the HTML file in your browser to explore!")
+    print("\nOpen the HTML file in your browser to explore!")
 
 
 if __name__ == "__main__":
