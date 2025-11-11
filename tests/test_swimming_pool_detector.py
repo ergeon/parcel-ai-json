@@ -122,8 +122,9 @@ class TestSwimmingPoolDetectionService:
 
         # Check that YOLO was called with either short or full path to yolov8m-obb.pt
         call_args = mock_yolo.call_args[0][0]
-        assert call_args == "yolov8m-obb.pt" or call_args.endswith("models/yolov8m-obb.pt"), \
-            f"Expected YOLO to be called with yolov8m-obb.pt or full path, got: {call_args}"
+        assert call_args == "yolov8m-obb.pt" or call_args.endswith(
+            "models/yolov8m-obb.pt"
+        ), f"Expected YOLO to be called with yolov8m-obb.pt or full path, got: {call_args}"
 
     @patch("ultralytics.YOLO")
     def test_load_model_only_once(self, mock_yolo):

@@ -74,35 +74,46 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     sam_segments = sam_service.segment_image(satellite_image)
     print(f"   ✓ Found {len(sam_segments)} SAM segments")
 
-    # Run semantic detections (skip trees for faster demo)
-    print("2. Running semantic detections (vehicles, pools, amenities)...")
+    # Run semantic detections
+    print("2. Running semantic detections (vehicles, pools, amenities, trees)...")
     from parcel_ai_json.vehicle_detector import VehicleDetectionService
     from parcel_ai_json.swimming_pool_detector import SwimmingPoolDetectionService
     from parcel_ai_json.amenity_detector import AmenityDetectionService
+    from parcel_ai_json.tree_detector import TreeDetectionService
     from parcel_ai_json.property_detector import PropertyDetections
 
     # Run individual detections
     vehicle_service = VehicleDetectionService(confidence_threshold=0.25)
     pool_service = SwimmingPoolDetectionService(confidence_threshold=0.3)
     amenity_service = AmenityDetectionService(confidence_threshold=0.3)
+    tree_service = TreeDetectionService()
 
     vehicles = vehicle_service.detect_vehicles(satellite_image)
     pools = pool_service.detect_swimming_pools(satellite_image)
     amenities = amenity_service.detect_amenities(satellite_image)
+
+    # Try tree detection, fall back to empty list if Docker not available
+    try:
+        trees = tree_service.detect_trees(satellite_image)
+    except RuntimeError as e:
+        print(f"   ⚠ Tree detection skipped (Docker required): {e}")
+        trees = []
 
     # Create detections object
     detections = PropertyDetections(
         vehicles=vehicles,
         swimming_pools=pools,
         amenities=amenities,
-        trees=None,  # Skip for speed
+        trees=trees,
     )
     print(f"   ✓ Found {len(detections.vehicles)} vehicles")
     print(f"   ✓ Found {len(detections.swimming_pools)} pools")
     print(f"   ✓ Found {len(detections.amenities)} amenities")
+    print(f"   ✓ Found {len(detections.trees)} trees")
 
     # Get image dimensions
     from PIL import Image
+
     with Image.open(image_path) as img:
         img_width, img_height = img.size
 
@@ -146,10 +157,21 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     ).add_to(m)
 
     # Create feature groups for layer control
-    sam_group = folium.FeatureGroup(name="SAM Segments (63)", show=True)
-    vehicles_group = folium.FeatureGroup(name=f"Vehicles ({len(detections.vehicles)})", show=True)
-    pools_group = folium.FeatureGroup(name=f"Swimming Pools ({len(detections.swimming_pools)})", show=True)
-    amenities_group = folium.FeatureGroup(name=f"Amenities ({len(detections.amenities)})", show=True)
+    sam_group = folium.FeatureGroup(
+        name=f"SAM Segments ({len(sam_segments)})", show=True
+    )
+    vehicles_group = folium.FeatureGroup(
+        name=f"Vehicles ({len(detections.vehicles)})", show=True
+    )
+    pools_group = folium.FeatureGroup(
+        name=f"Swimming Pools ({len(detections.swimming_pools)})", show=True
+    )
+    amenities_group = folium.FeatureGroup(
+        name=f"Amenities ({len(detections.amenities)})", show=True
+    )
+    trees_group = folium.FeatureGroup(
+        name=f"Trees ({len(detections.trees)})", show=True
+    )
 
     # Add SAM segments with semi-transparent fill
     print("4. Adding SAM segments to map...")
@@ -242,11 +264,32 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             tooltip=f"{amenity.amenity_type}",
         ).add_to(amenities_group)
 
+    # Add trees with green markers
+    print("8. Adding trees to map...")
+    for tree in detections.trees:
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in tree.geo_polygon],
+            color="#228B22",  # Forest green
+            weight=2,
+            fill=True,
+            fillColor="#228B22",
+            fillOpacity=0.5,
+            popup=folium.Popup(
+                f"<b>Tree</b><br>"
+                f"Detection: {tree.detection_method}<br>"
+                f"Confidence: {tree.confidence:.2f}<br>"
+                f"Area: {tree.area_sqm:.1f} m²",
+                max_width=200,
+            ),
+            tooltip="Tree",
+        ).add_to(trees_group)
+
     # Add all groups to map
     sam_group.add_to(m)
     vehicles_group.add_to(m)
     pools_group.add_to(m)
     amenities_group.add_to(m)
+    trees_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)
@@ -267,6 +310,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     <p style="margin:5px 0;"><span style="color:#800080;">●</span> Vehicles</p>
     <p style="margin:5px 0;"><span style="color:#0066cc;">●</span> Swimming Pools</p>
     <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities</p>
+    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees</p>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
@@ -294,12 +338,15 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"  - Vehicles: {len(detections.vehicles)}")
     print(f"  - Swimming pools: {len(detections.swimming_pools)}")
     print(f"  - Amenities: {len(detections.amenities)}")
+    print(f"  - Trees: {len(detections.trees)}")
     print(f"\nOpen the HTML file in your browser to explore!")
 
 
 if __name__ == "__main__":
     # Use the same image we tested SAM on
     image_path = "output/examples/images/672_white_oak_ln_vacaville_ca_95687.jpg"
-    output_path = "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
+    output_path = (
+        "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
+    )
 
     create_enhanced_folium_map(image_path, output_path)

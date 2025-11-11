@@ -52,5 +52,9 @@ output/
 models/*.pt
 *.pt
 
+# Downloaded SAM models (large files, downloaded automatically)
+models/*.pth
+*.pth
+
 # Deployment credentials
 pypirc.conf

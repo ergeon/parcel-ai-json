@@ -111,7 +111,8 @@ class SAMSegmentationService:
         except ImportError:
             raise ImportError(
                 "SAM segmentation requires segment_anything package. "
-                "Install with: pip install git+https://github.com/facebookresearch/segment-anything.git"
+                "Install with: "
+                "pip install git+https://github.com/facebookresearch/segment-anything.git"
             )
 
         # Determine checkpoint path
@@ -136,15 +137,16 @@ class SAMSegmentationService:
             checkpoint_path = models_dir / checkpoint_file
 
             if not checkpoint_path.exists():
+                download_url = (
+                    f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
+                )
                 raise FileNotFoundError(
                     f"Model checkpoint not found: {checkpoint_path}\n"
-                    f"Download from: https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
+                    f"Download from: {download_url}"
                 )
 
         # Load SAM model
-        self._sam = sam_model_registry[self.model_type](
-            checkpoint=str(checkpoint_path)
-        )
+        self._sam = sam_model_registry[self.model_type](checkpoint=str(checkpoint_path))
         self._sam.to(device=self.device)
 
         # Create automatic mask generator
@@ -189,6 +191,18 @@ class SAMSegmentationService:
         # Get center coordinates
         center_lat = satellite_image["center_lat"]
         center_lon = satellite_image["center_lon"]
+        zoom_level = satellite_image.get("zoom_level", 20)
+
+        # Create coordinate converter for accurate pixel-to-geo conversion
+        from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+
+        coord_converter = ImageCoordinateConverter(
+            center_lat=center_lat,
+            center_lon=center_lon,
+            image_width_px=image_width,
+            image_height_px=image_height,
+            zoom_level=zoom_level,
+        )
 
         # Run automatic mask generation
         masks = self._mask_generator.generate(image_array)
@@ -209,12 +223,10 @@ class SAMSegmentationService:
             x, y, w, h = bbox
             pixel_bbox = (int(x), int(y), int(x + w), int(y + h))
 
-            # Extract polygon from mask
+            # Extract polygon from mask using coordinate converter
             geo_polygon = self._mask_to_geo_polygon(
                 mask,
-                center_lat,
-                center_lon,
-                (image_height, image_width),
+                coord_converter,
             )
 
             if not geo_polygon or len(geo_polygon) < 3:
@@ -261,19 +273,16 @@ class SAMSegmentationService:
     def _mask_to_geo_polygon(
         self,
         mask: np.ndarray,
-        center_lat: float,
-        center_lon: float,
-        image_shape: Tuple[int, int],
+        coord_converter,
     ) -> List[Tuple[float, float]]:
         """Convert binary mask to geographic polygon.
 
-        Uses OpenCV to find contours, then converts pixel coordinates to WGS84.
+        Uses OpenCV to find contours, then converts pixel coordinates to WGS84
+        using ImageCoordinateConverter for accurate geodesic calculations.
 
         Args:
             mask: Binary mask array (H x W)
-            center_lat: Image center latitude
-            center_lon: Image center longitude
-            image_shape: (height, width) of image
+            coord_converter: ImageCoordinateConverter instance
 
         Returns:
             List of (lon, lat) coordinates forming a polygon
@@ -282,8 +291,6 @@ class SAMSegmentationService:
             import cv2
         except ImportError:
             raise ImportError("opencv-python required for mask-to-polygon conversion")
-
-        from pyproj import Geod
 
         # Find contours
         contours, _ = cv2.findContours(
@@ -308,31 +315,11 @@ class SAMSegmentationService:
         if len(simplified) < 3:
             return []
 
-        # Convert pixel coordinates to geographic
-        geod = Geod(ellps="WGS84")
-        image_height, image_width = image_shape
-
-        # Estimate meters per pixel (approximate for zoom level 20)
-        # TODO: Use actual zoom level from satellite_image if provided
-        meters_per_pixel = 0.15  # ~0.15m/pixel at zoom 20
-
+        # Convert pixel coordinates to geographic using coordinate converter
         geo_polygon = []
         for point in simplified:
             px, py = point[0]
-
-            # Calculate offset from center in pixels
-            dx_pixels = px - image_width / 2
-            dy_pixels = image_height / 2 - py  # Flip Y axis (image Y goes down)
-
-            # Convert to meters
-            dx_meters = dx_pixels * meters_per_pixel
-            dy_meters = dy_pixels * meters_per_pixel
-
-            # Calculate new lat/lon using geodesic forward calculation
-            # First move east/west, then north/south
-            lon, lat, _ = geod.fwd(center_lon, center_lat, 90, dx_meters)
-            lon, lat, _ = geod.fwd(lon, lat, 0, dy_meters)
-
+            lon, lat = coord_converter.pixel_to_geo(float(px), float(py))
             geo_polygon.append((lon, lat))
 
         # Close polygon if not already closed

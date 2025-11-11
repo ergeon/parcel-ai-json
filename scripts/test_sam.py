@@ -62,7 +62,9 @@ def test_sam_on_satellite_image():
     except FileNotFoundError as e:
         print(f"ERROR: {e}")
         print("\nPlease download the SAM model checkpoint:")
-        print("cd models && curl -L -o sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth")
+        print(
+            "cd models && curl -L -o sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+        )
         return
     except Exception as e:
         print(f"ERROR loading model: {e}")
@@ -77,6 +79,7 @@ def test_sam_on_satellite_image():
     except Exception as e:
         print(f"ERROR during segmentation: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
@@ -110,8 +113,10 @@ def test_sam_on_satellite_image():
         # Show first 5 segments
         print(f"\nFirst 5 segments:")
         for i, seg in enumerate(segments[:5]):
-            print(f"  [{i}] ID={seg.segment_id}, area={seg.area_pixels}px, "
-                  f"stability={seg.stability_score:.3f}, iou={seg.predicted_iou:.3f}")
+            print(
+                f"  [{i}] ID={seg.segment_id}, area={seg.area_pixels}px, "
+                f"stability={seg.stability_score:.3f}, iou={seg.predicted_iou:.3f}"
+            )
 
         # Save GeoJSON
         output_dir = Path("output/examples/sam")
@@ -175,7 +180,9 @@ def create_visualization(image_path: Path, segments, output_dir: Path):
         # Draw bounding box
         x1, y1, x2, y2 = seg.pixel_bbox
         rect = mpatches.Rectangle(
-            (x1, y1), x2 - x1, y2 - y1,
+            (x1, y1),
+            x2 - x1,
+            y2 - y1,
             linewidth=1,
             edgecolor=color,
             facecolor="none",
