@@ -92,12 +92,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     pools = pool_service.detect_swimming_pools(satellite_image)
     amenities = amenity_service.detect_amenities(satellite_image)
 
-    # Try tree detection, fall back to empty list if Docker not available
-    try:
-        trees = tree_service.detect_trees(satellite_image)
-    except RuntimeError as e:
-        print(f"   ⚠ Tree detection skipped (Docker required): {e}")
-        trees = []
+    # Run tree detection with both DeepForest and detectree
+    print("   Running DeepForest + detectree tree detection...")
+    trees = tree_service.detect_trees(satellite_image)
 
     # Create detections object
     detections = PropertyDetections(

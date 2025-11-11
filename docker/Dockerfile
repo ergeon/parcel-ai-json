@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies for OpenCV, GDAL, and PyTorch
+# Install system dependencies for OpenCV, GDAL, PyTorch, and SAM
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgdal-dev \
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgomp1 \
     wget \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -76,6 +77,12 @@ RUN python -c "\
 print('DeepForest will download model on first use'); \
 print('Model cache directory: /root/.cache/torch'); \
 "
+
+# Pre-download SAM model (ViT-B variant for speed/quality balance)
+RUN mkdir -p /app/models && \
+    cd /app/models && \
+    wget -q https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && \
+    echo "SAM ViT-B model downloaded to /app/models/"
 
 # Create directory for temporary file uploads
 RUN mkdir -p /tmp/uploads && chmod 777 /tmp/uploads
