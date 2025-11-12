@@ -52,16 +52,19 @@ COPY README.md .
 # Install package in development mode
 RUN pip install -e .
 
-# Download YOLO models to bake into image (avoid first-run download)
-# This makes the image larger but ensures consistent startup time
-RUN python -c "\
-from ultralytics import YOLO; \
-import os; \
-os.makedirs('/root/.ultralytics', exist_ok=True); \
-print('Downloading YOLOv8m-OBB model...'); \
-model = YOLO('yolov8m-obb.pt'); \
-print('Model downloaded and cached'); \
-"
+# Copy pre-downloaded models from local machine (avoids network downloads)
+# This saves build time and bandwidth
+COPY models/ /app/models/
+
+# Copy YOLO models to ultralytics cache directory
+RUN mkdir -p /root/.ultralytics && \
+    cp /app/models/yolov8*.pt /root/.ultralytics/ && \
+    echo "YOLO models copied to /root/.ultralytics/" && \
+    ls -lh /root/.ultralytics/
+
+# Verify SAM models are available
+RUN echo "SAM models available at /app/models/:" && \
+    ls -lh /app/models/sam_vit_*.pth
 
 # Pre-download detectree model data
 RUN python -c "\
@@ -77,18 +80,6 @@ RUN python -c "\
 print('DeepForest will download model on first use'); \
 print('Model cache directory: /root/.cache/torch'); \
 "
-
-# Pre-download SAM models (ViT-H for highest accuracy, ViT-B and ViT-L for comparison)
-RUN mkdir -p /app/models && \
-    cd /app/models && \
-    echo "Downloading SAM ViT-B model (358MB)..." && \
-    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && \
-    echo "Downloading SAM ViT-L model (~1.2GB)..." && \
-    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth && \
-    echo "Downloading SAM ViT-H model (~2.4GB) - DEFAULT for highest accuracy..." && \
-    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth && \
-    echo "SAM models downloaded to /app/models/" && \
-    ls -lh /app/models/
 
 # Create directory for temporary file uploads
 RUN mkdir -p /tmp/uploads && chmod 777 /tmp/uploads
