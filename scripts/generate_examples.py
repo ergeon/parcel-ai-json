@@ -13,31 +13,7 @@ from pathlib import Path
 import folium
 from folium import plugins
 
-
-def get_best_device() -> str:
-    """Auto-detect best available device for PyTorch inference.
-
-    Returns:
-        "cuda" for NVIDIA GPUs (ECS g4dn instances, EC2)
-        "mps" for Apple Silicon (local Mac development)
-        "cpu" as fallback (Docker, non-GPU instances)
-    """
-    try:
-        import torch
-
-        # Check for NVIDIA CUDA (ECS GPU instances, EC2)
-        if torch.cuda.is_available():
-            return "cuda"
-
-        # Check for Apple Silicon MPS (local Mac development)
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return "mps"
-
-    except ImportError:
-        pass
-
-    # Fallback to CPU (Docker on Mac, non-GPU instances)
-    return "cpu"
+from parcel_ai_json.device_utils import get_best_device
 
 
 def load_quote_coordinates(csv_path):

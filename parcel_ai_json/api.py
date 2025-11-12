@@ -12,6 +12,7 @@ from pathlib import Path
 import logging
 
 from parcel_ai_json.property_detector import PropertyDetectionService
+from parcel_ai_json.device_utils import get_best_device
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,14 +33,16 @@ def get_detector() -> PropertyDetectionService:
     """Get or create the PropertyDetectionService singleton."""
     global _detector
     if _detector is None:
-        logger.info("Initializing PropertyDetectionService with DeepForest...")
+        # Auto-detect best device (cuda/mps/cpu)
+        device = get_best_device()
+        logger.info(f"Initializing PropertyDetectionService with DeepForest (device: {device})...")
 
         # Create property detector with parallel DeepForest + detectree tree detection
         _detector = PropertyDetectionService(
             vehicle_confidence=0.25,
             pool_confidence=0.3,
             amenity_confidence=0.3,
-            device="cpu",  # Use "cuda" if GPU available
+            device=device,  # Auto-detected: cuda/mps/cpu
             tree_confidence=0.1,  # Low threshold to detect more trees
             tree_model_name="weecology/deepforest-tree",
             # Enable detectree polygon extraction (runs natively inside container)
@@ -49,7 +52,7 @@ def get_detector() -> PropertyDetectionService:
             detectree_use_docker=False,  # Native mode inside unified container
         )
 
-        logger.info("PropertyDetectionService initialized with DeepForest")
+        logger.info(f"PropertyDetectionService initialized with DeepForest on {device}")
     return _detector
 
 
