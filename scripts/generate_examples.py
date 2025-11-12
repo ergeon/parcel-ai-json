@@ -14,6 +14,32 @@ import folium
 from folium import plugins
 
 
+def get_best_device() -> str:
+    """Auto-detect best available device for PyTorch inference.
+
+    Returns:
+        "cuda" for NVIDIA GPUs (ECS g4dn instances, EC2)
+        "mps" for Apple Silicon (local Mac development)
+        "cpu" as fallback (Docker, non-GPU instances)
+    """
+    try:
+        import torch
+
+        # Check for NVIDIA CUDA (ECS GPU instances, EC2)
+        if torch.cuda.is_available():
+            return "cuda"
+
+        # Check for Apple Silicon MPS (local Mac development)
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+
+    except ImportError:
+        pass
+
+    # Fallback to CPU (Docker on Mac, non-GPU instances)
+    return "cpu"
+
+
 def load_quote_coordinates(csv_path):
     """Load quote coordinates from CSV."""
     coords_by_address = {}
@@ -654,10 +680,12 @@ def generate_examples(num_examples=20):
             # Run SAM segmentation (ViT-H for highest accuracy)
             from parcel_ai_json.sam_segmentation import SAMSegmentationService
 
-            print("  Running SAM segmentation...")
+            # Auto-detect best device (cuda/mps/cpu)
+            device = get_best_device()
+            print(f"  Running SAM segmentation (device: {device})...")
             sam_service = SAMSegmentationService(
                 model_type="vit_h",
-                device="cpu",
+                device=device,
                 points_per_side=16,  # Faster inference
                 pred_iou_thresh=0.88,
                 stability_score_thresh=0.95,
