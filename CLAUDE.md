@@ -17,6 +17,137 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **Geodesic accuracy** - Uses pyproj for proper WGS84 transformations (never hardcode Earth radius)
 4. **Auto GPU detection** - Automatically uses CUDA/MPS/CPU via `device_utils.py`
 
+## CRITICAL: Docker-First Architecture for Computer Vision Models
+
+**ALL COMPUTER VISION MODELS RUN INSIDE DOCKER CONTAINERS**
+
+### Architecture Overview
+
+This project uses a **Docker-first architecture** where:
+- **ALL ML models** (YOLO, DeepForest, detectree, SAM) run inside Docker containers
+- **Scripts and tools** communicate with Docker containers via **REST API only**
+- **Never use direct file system mounts or local model execution** in production scripts
+
+### Why This Matters
+
+1. **detectree** requires Docker because:
+   - Uses PyTorch Lightning with specific version requirements
+   - Has complex dependency chains (torch, detectron2, etc.)
+   - Runs segmentation models that need isolated environment
+
+2. **All other models** should follow the same pattern for consistency:
+   - YOLO models (vehicles, pools, amenities)
+   - DeepForest (tree detection)
+   - SAM (Segment Anything Model)
+
+### Correct Usage Pattern
+
+#### ❌ WRONG - Direct File System Access
+```python
+# DON'T DO THIS - causes Docker volume mount errors
+detector = PropertyDetectionService()
+detections = detector.detect_all({
+    "path": "output/examples/images/image.jpg",  # Relative path fails in Docker
+    "center_lat": 37.7749,
+    "center_lon": -122.4194,
+})
+```
+
+#### ✅ CORRECT - Use REST API
+```python
+# DO THIS - Use FastAPI REST endpoint
+import requests
+
+# 1. Ensure Docker container is running
+# docker-compose up -d
+
+# 2. Call REST API endpoint
+with open("output/examples/images/image.jpg", "rb") as f:
+    files = {"file": f}
+    data = {
+        "center_lat": 37.7749,
+        "center_lon": -122.4194,
+        "zoom_level": 20,
+        "include_trees": True,
+        "extract_tree_polygons": True
+    }
+    response = requests.post(
+        "http://localhost:8000/api/v1/detect",
+        files=files,
+        data=data
+    )
+    detections = response.json()
+```
+
+### Development Workflow
+
+1. **Start Docker container first**:
+   ```bash
+   docker-compose up -d
+   # or
+   make docker-run
+   ```
+
+2. **Test API is running**:
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+3. **Use REST API in all scripts**:
+   - Never instantiate model services directly in scripts
+   - Always use HTTP requests to Docker container API
+   - Pass images as multipart/form-data uploads
+
+### When Direct Model Usage is Acceptable
+
+**ONLY** in these specific cases:
+- **Unit tests** - Testing individual model components in isolation
+- **Model development** - Training, fine-tuning, or debugging models
+- **Jupyter notebooks** - Interactive exploration and prototyping
+
+**NEVER** in:
+- Production scripts
+- Example generation scripts
+- Data processing pipelines
+- Any script intended for external use
+
+### File Path Rules for Docker
+
+When working with Docker containers:
+- **Always use absolute paths** for volume mounts
+- **Never use relative paths** like `output/examples/images`
+- **Prefer REST API** over volume mounts entirely
+
+Example:
+```python
+# BAD
+docker_cmd = f"docker run -v output/images:/data ..."  # Fails!
+
+# GOOD
+import os
+abs_path = os.path.abspath("output/images")
+docker_cmd = f"docker run -v {abs_path}:/data ..."
+
+# BEST
+# Don't use volume mounts - use REST API instead!
+```
+
+### Adding This to New Scripts
+
+When creating new scripts, **always**:
+1. Check if Docker container is running (`curl http://localhost:8000/health`)
+2. Use REST API endpoints (see `parcel_ai_json/api.py` for available endpoints)
+3. Never instantiate `PropertyDetectionService`, `SAMSegmentationService`, etc. directly
+4. Document Docker dependency clearly at top of script
+
+### Summary
+
+**Remember**:
+- 🐳 **All CV models run in Docker**
+- 🌐 **All scripts use REST API**
+- 🚫 **No direct file system mounts with relative paths**
+- ✅ **Test `curl http://localhost:8000/health` before running any script**
+
 ## Essential Commands
 
 ### Development Environment Setup

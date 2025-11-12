@@ -348,3 +348,68 @@ class SAMSegmentationService:
             return abs(area)
         except Exception:
             return 0.0
+
+    def segment_image_labeled(
+        self,
+        satellite_image: Dict,
+        detections: Dict,
+        overlap_threshold: float = 0.5
+    ) -> List:
+        """Run segmentation and label segments using detection overlap.
+
+        Args:
+            satellite_image: Dict with path, center_lat, center_lon, zoom_level
+            detections: Dict with detection lists:
+                - 'vehicles': List of vehicle detections
+                - 'pools': List of pool detections
+                - 'trees': List of tree detections
+                - 'tree_polygons': List of TreePolygon objects
+                - 'amenities': List of amenity detections
+            overlap_threshold: IoU threshold for overlap labeling
+
+        Returns:
+            List of LabeledSAMSegment objects
+        """
+        from parcel_ai_json.sam_labeler import SAMSegmentLabeler
+
+        # Run standard segmentation
+        sam_segments = self.segment_image(satellite_image)
+
+        # Label segments
+        labeler = SAMSegmentLabeler(overlap_threshold=overlap_threshold)
+        labeled_segments = labeler.label_segments(sam_segments, detections)
+
+        print(
+            f"Labeled {len(labeled_segments)} segments: "
+            f"{sum(1 for s in labeled_segments if s.primary_label != 'unknown')} "
+            f"with semantic labels"
+        )
+
+        return labeled_segments
+
+    def segment_image_labeled_geojson(
+        self,
+        satellite_image: Dict,
+        detections: Dict,
+        overlap_threshold: float = 0.5
+    ) -> Dict:
+        """Run segmentation with labeling and return GeoJSON.
+
+        Args:
+            satellite_image: Same as segment_image_labeled()
+            detections: Same as segment_image_labeled()
+            overlap_threshold: IoU threshold for overlap labeling
+
+        Returns:
+            GeoJSON FeatureCollection with labeled segments
+        """
+        labeled_segments = self.segment_image_labeled(
+            satellite_image,
+            detections,
+            overlap_threshold
+        )
+
+        return {
+            "type": "FeatureCollection",
+            "features": [seg.to_geojson_feature() for seg in labeled_segments],
+        }

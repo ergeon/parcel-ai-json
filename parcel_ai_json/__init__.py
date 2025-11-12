@@ -27,6 +27,12 @@ from parcel_ai_json.amenity_detector import (
     AmenityDetectionService,
     AmenityDetection,
 )
+from parcel_ai_json.sam_segmentation import SAMSegmentationService, SAMSegment
+from parcel_ai_json.sam_labeler import (
+    SAMSegmentLabeler,
+    LabeledSAMSegment,
+    LABEL_SCHEMA,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -42,4 +48,10 @@ __all__ = [
     "SwimmingPoolDetection",
     "AmenityDetectionService",
     "AmenityDetection",
+    # SAM segmentation
+    "SAMSegmentationService",
+    "SAMSegment",
+    "SAMSegmentLabeler",
+    "LabeledSAMSegment",
+    "LABEL_SCHEMA",
 ]

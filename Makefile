@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples docker-build docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
+.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples docker-build docker-build-clean docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
 
 # Default target
 .DEFAULT_GOAL := help
@@ -115,6 +115,12 @@ tag: ## Create and push git tag for current version (must be on master)
 docker-build: ## Build Docker image
 	@echo "Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)..."
 	docker build -f docker/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	@echo "Docker image built successfully!"
+	@echo "Run 'make docker-run' to start the service"
+
+docker-build-clean: ## Build Docker image without cache (forces full rebuild)
+	@echo "Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG) without cache..."
+	docker build --no-cache -f docker/Dockerfile -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 	@echo "Docker image built successfully!"
 	@echo "Run 'make docker-run' to start the service"
 

@@ -13,6 +13,7 @@ import logging
 
 from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
+from parcel_ai_json.sam_segmentation import SAMSegmentationService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,7 @@ app = FastAPI(
 
 # Initialize detection service (lazy-loaded on first request)
 _detector = None
+_sam_service = None
 
 
 def get_detector() -> PropertyDetectionService:
@@ -56,6 +58,26 @@ def get_detector() -> PropertyDetectionService:
     return _detector
 
 
+def get_sam_service() -> SAMSegmentationService:
+    """Get or create the SAMSegmentationService singleton."""
+    global _sam_service
+    if _sam_service is None:
+        device = get_best_device()
+        logger.info(f"Initializing SAMSegmentationService (device: {device})...")
+
+        _sam_service = SAMSegmentationService(
+            model_type="vit_b",  # Using ViT-B model
+            device=device,
+            points_per_side=32,  # Standard grid sampling
+            pred_iou_thresh=0.88,
+            stability_score_thresh=0.95,
+            min_mask_region_area=100,
+        )
+
+        logger.info(f"SAMSegmentationService initialized on {device}")
+    return _sam_service
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -82,6 +104,8 @@ async def detect_property(
     center_lon: float = Form(..., description="Image center longitude (WGS84)"),
     zoom_level: int = Form(20, description="Zoom level (default: 20)"),
     format: str = Form("geojson", description="Output format: 'geojson' or 'summary'"),
+    include_sam: bool = Form(False, description="Include SAM segmentation (default: False)"),
+    sam_points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
 ):
     """Detect all property features in satellite image.
 
@@ -91,13 +115,15 @@ async def detect_property(
         center_lon: Center longitude of image (WGS84)
         zoom_level: Zoom level (default: 20)
         format: Output format - 'geojson' (default) or 'summary'
+        include_sam: Include SAM segmentation (default: False)
+        sam_points_per_side: SAM grid sampling density (default: 32)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
     """
     logger.info(
         f"Processing detection request: lat={center_lat}, lon={center_lon}, "
-        f"zoom={zoom_level}, format={format}"
+        f"zoom={zoom_level}, format={format}, include_sam={include_sam}"
     )
 
     # Validate inputs
@@ -115,6 +141,11 @@ async def detect_property(
 
     if format not in ["geojson", "summary"]:
         raise HTTPException(status_code=400, detail="Format must be 'geojson' or 'summary'")
+
+    if include_sam and not 8 <= sam_points_per_side <= 64:
+        raise HTTPException(
+            status_code=400, detail="sam_points_per_side must be between 8 and 64"
+        )
 
     # Save uploaded file to temporary location
     temp_dir = None
@@ -141,12 +172,38 @@ async def detect_property(
             # Return summary statistics only
             detections = detector.detect_all(satellite_image)
             summary = detections.summary()
+
+            # Add SAM segment count if requested
+            if include_sam:
+                sam_service = get_sam_service()
+                if sam_points_per_side != sam_service.points_per_side:
+                    sam_service.points_per_side = sam_points_per_side
+                sam_segments = sam_service.segment_image(satellite_image)
+                summary["sam_segments"] = len(sam_segments)
+
             logger.info(f"Detection complete: {summary}")
             return JSONResponse(content=summary)
         else:
             # Return full GeoJSON
             geojson = detector.detect_all_geojson(satellite_image)
-            logger.info(f"Detection complete: {len(geojson['features'])} features found")
+
+            # Add SAM segments if requested
+            if include_sam:
+                logger.info("Running SAM segmentation...")
+                sam_service = get_sam_service()
+                if sam_points_per_side != sam_service.points_per_side:
+                    logger.info(f"Updating SAM points_per_side to {sam_points_per_side}")
+                    sam_service.points_per_side = sam_points_per_side
+
+                sam_segments = sam_service.segment_image(satellite_image)
+
+                # Add SAM segments to GeoJSON
+                sam_features = [seg.to_geojson_feature() for seg in sam_segments]
+                geojson["features"].extend(sam_features)
+
+                logger.info(f"SAM segmentation complete: {len(sam_segments)} segments added")
+
+            logger.info(f"Detection complete: {len(geojson['features'])} total features")
             return JSONResponse(content=geojson)
 
     except Exception as e:
@@ -329,6 +386,96 @@ async def detect_trees(
         raise HTTPException(status_code=500, detail=f"Tree detection failed: {str(e)}")
 
     finally:
+        if temp_dir and temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@app.post("/segment/sam")
+async def segment_sam(
+    image: UploadFile = File(..., description="Satellite image file (JPEG/PNG)"),
+    center_lat: float = Form(..., description="Image center latitude (WGS84)"),
+    center_lon: float = Form(..., description="Image center longitude (WGS84)"),
+    zoom_level: int = Form(20, description="Zoom level (default: 20)"),
+    points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
+):
+    """Run SAM segmentation on satellite image.
+
+    Args:
+        image: Satellite image file (JPEG or PNG)
+        center_lat: Center latitude of image (WGS84)
+        center_lon: Center longitude of image (WGS84)
+        zoom_level: Zoom level (default: 20)
+        points_per_side: SAM grid sampling density (default: 32)
+
+    Returns:
+        GeoJSON with SAM segments
+    """
+    logger.info(
+        f"Processing SAM segmentation: lat={center_lat}, lon={center_lon}, "
+        f"zoom={zoom_level}, points_per_side={points_per_side}"
+    )
+
+    # Validate inputs
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
+
+    if not -90 <= center_lat <= 90:
+        raise HTTPException(status_code=400, detail="Latitude must be between -90 and 90")
+
+    if not -180 <= center_lon <= 180:
+        raise HTTPException(status_code=400, detail="Longitude must be between -180 and 180")
+
+    if not 1 <= zoom_level <= 22:
+        raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
+
+    if not 8 <= points_per_side <= 64:
+        raise HTTPException(
+            status_code=400, detail="points_per_side must be between 8 and 64"
+        )
+
+    # Save uploaded file to temporary location
+    temp_dir = None
+    try:
+        temp_dir = Path(tempfile.mkdtemp())
+        image_path = temp_dir / image.filename
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(image.file, f)
+
+        logger.info(f"Saved uploaded image to {image_path}")
+
+        # Prepare satellite image metadata
+        satellite_image = {
+            "path": str(image_path),
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "zoom_level": zoom_level,
+        }
+
+        # Get SAM service and run segmentation
+        sam_service = get_sam_service()
+
+        # Update points_per_side if different from default
+        if points_per_side != sam_service.points_per_side:
+            logger.info(f"Updating SAM points_per_side to {points_per_side}")
+            sam_service.points_per_side = points_per_side
+
+        segments = sam_service.segment_image(satellite_image)
+
+        # Convert to GeoJSON
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [seg.to_geojson_feature() for seg in segments],
+        }
+
+        logger.info(f"SAM segmentation complete: {len(segments)} segments found")
+        return JSONResponse(content=geojson)
+
+    except Exception as e:
+        logger.error(f"SAM segmentation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"SAM segmentation failed: {str(e)}")
+
+    finally:
+        # Clean up temporary files
         if temp_dir and temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
 
