@@ -107,6 +107,8 @@ class TestTreeDetection(unittest.TestCase):
         ]
 
         detection = TreeDetection(
+            trees=[],
+            tree_count=0,
             tree_pixel_count=5000,
             total_pixels=262144,
             tree_coverage_percent=1.91,
@@ -136,6 +138,8 @@ class TestTreeDetection(unittest.TestCase):
         ]
 
         detection = TreeDetection(
+            trees=[],
+            tree_count=0,
             tree_pixel_count=5000,
             total_pixels=262144,
             tree_coverage_percent=1.91,
@@ -154,6 +158,8 @@ class TestTreeDetection(unittest.TestCase):
     def test_tree_detection_to_dict_without_polygons(self):
         """Test converting TreeDetection to dict without polygons."""
         detection = TreeDetection(
+            trees=[],
+            tree_count=0,
             tree_pixel_count=5000,
             total_pixels=262144,
             tree_coverage_percent=1.91,
@@ -187,7 +193,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons = service._extract_tree_polygons(
+        polygons = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -221,7 +227,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons = service._extract_tree_polygons(
+        polygons = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -242,7 +248,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons = service._extract_tree_polygons(
+        polygons = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -362,7 +368,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons = service._extract_tree_polygons(
+        polygons = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -387,7 +393,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons_no_simplify = service._extract_tree_polygons(
+        polygons_no_simplify = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -395,7 +401,7 @@ class TestTreeDetectionService(unittest.TestCase):
         service_simplified = TreeDetectionService(
             detectree_use_docker=False, detectree_simplify_tolerance_meters=1.0
         )
-        polygons_simplified = service_simplified._extract_tree_polygons(
+        polygons_simplified = service_simplified.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 
@@ -422,7 +428,7 @@ class TestTreeDetectionService(unittest.TestCase):
             "zoom_level": 20,
         }
 
-        polygons = service._extract_tree_polygons(
+        polygons = service.detectree._extract_tree_polygons(
             mask, satellite_image, image_width=100, image_height=100
         )
 

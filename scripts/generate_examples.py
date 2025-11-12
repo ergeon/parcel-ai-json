@@ -228,7 +228,8 @@ def generate_folium_map(
             <b>Swimming Pool Detection</b><br>
             Confidence: {confidence:.1%}<br>
             Area: {area_sqm:.1f} m²<br>
-            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f},
+            {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
             """
             tooltip_text = f"Swimming Pool ({confidence:.1%})"
             label_text = "Pool"
@@ -254,7 +255,8 @@ def generate_folium_map(
             <b>{amenity_type.title()} Detection</b><br>
             Confidence: {confidence:.1%}<br>
             Area: {area_sqm:.1f} m²<br>
-            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f},
+            {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
             """
             tooltip_text = f"{amenity_type.title()} ({confidence:.1%})"
             label_text = f"{icon} {amenity_type.split()[0].title()}"
@@ -270,7 +272,8 @@ def generate_folium_map(
             <b>Vehicle Detection</b><br>
             Class: {vehicle_class}<br>
             Confidence: {confidence:.1%}<br>
-            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f}, {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
+            Pixel BBox: [{pixel_bbox[0]:.0f}, {pixel_bbox[1]:.0f},
+            {pixel_bbox[2]:.0f}, {pixel_bbox[3]:.0f}]
             """
             tooltip_text = f"{vehicle_class} ({confidence:.1%})"
             # Capitalize first letter of each word for label
@@ -355,7 +358,11 @@ def generate_folium_map(
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_count:.1f}% &nbsp;&nbsp; <b>SAM Segments:</b> {len(sam_segments)}
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count}
+        &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp;
+        <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp;
+        <b>Tree Coverage:</b> {tree_count:.1f}% &nbsp;&nbsp;
+        <b>SAM Segments:</b> {len(sam_segments)}
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -458,7 +465,8 @@ def generate_html_visualization(results, output_dir):
     <div class="stats">
         <p><strong>Model:</strong> YOLOv8m-OBB (Oriented Bounding Boxes for Aerial Imagery)</p>
         <p><strong>Total Processed:</strong> {total_processed} images</p>
-        <p><strong>Total Vehicles:</strong> {total_vehicles} | <strong>Total Pools:</strong> {total_pools}</p>
+        <p><strong>Total Vehicles:</strong> {total_vehicles} |
+        <strong>Total Pools:</strong> {total_pools}</p>
     </div>
     <div class="grid">
 """
@@ -480,7 +488,8 @@ def generate_html_visualization(results, output_dir):
         html_content += f"""
         <div class="example">
             <div class="image-container">
-                <img src="images/{result['image']}" alt="{result['image']}" id="img-{result['image']}">
+                <img src="images/{result['image']}" alt="{result['image']}"
+                id="img-{result['image']}">
                 <canvas id="canvas-{result['image']}"></canvas>
             </div>
             <div class="info">

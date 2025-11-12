@@ -118,15 +118,18 @@ def batch_compare_all_models(images_dir: str, output_dir: str, max_images: int =
         time_ratio_h_l = time_h / time_l if time_l > 0 else 0
         time_ratio_h_b = time_h / time_b if time_b > 0 else 0
 
-        print(f"\n  Comparisons:")
+        print("\n  Comparisons:")
         print(
-            f"    ViT-L vs ViT-B: {diff_l_b:+d} segments ({diff_l_b_percent:+.1f}%), {time_ratio_l_b:.2f}x time"
+            f"    ViT-L vs ViT-B: {diff_l_b:+d} segments "
+            f"({diff_l_b_percent:+.1f}%), {time_ratio_l_b:.2f}x time"
         )
         print(
-            f"    ViT-H vs ViT-L: {diff_h_l:+d} segments ({diff_h_l_percent:+.1f}%), {time_ratio_h_l:.2f}x time"
+            f"    ViT-H vs ViT-L: {diff_h_l:+d} segments "
+            f"({diff_h_l_percent:+.1f}%), {time_ratio_h_l:.2f}x time"
         )
         print(
-            f"    ViT-H vs ViT-B: {diff_h_b:+d} segments ({diff_h_b_percent:+.1f}%), {time_ratio_h_b:.2f}x time"
+            f"    ViT-H vs ViT-B: {diff_h_b:+d} segments "
+            f"({diff_h_b_percent:+.1f}%), {time_ratio_h_b:.2f}x time"
         )
 
         # Store results
@@ -193,27 +196,32 @@ def batch_compare_all_models(images_dir: str, output_dir: str, max_images: int =
     avg_time_ratio_h_b = sum(r["time_ratio_h_vs_b"] for r in results) / len(results)
 
     print(f"Images processed: {len(results)}")
-    print(f"\nAverage segments:")
+    print("\nAverage segments:")
     print(f"  ViT-B (Base):  {avg_b_segments:6.1f}")
     print(
-        f"  ViT-L (Large): {avg_l_segments:6.1f} ({avg_diff_l_b:+.1f}, {(avg_diff_l_b/avg_b_segments*100):+.1f}%)"
+        f"  ViT-L (Large): {avg_l_segments:6.1f} "
+        f"({avg_diff_l_b:+.1f}, {(avg_diff_l_b/avg_b_segments*100):+.1f}%)"
     )
     print(
-        f"  ViT-H (Huge):  {avg_h_segments:6.1f} ({avg_diff_h_b:+.1f}, {(avg_diff_h_b/avg_b_segments*100):+.1f}%)"
+        f"  ViT-H (Huge):  {avg_h_segments:6.1f} "
+        f"({avg_diff_h_b:+.1f}, {(avg_diff_h_b/avg_b_segments*100):+.1f}%)"
     )
-    print(f"\nAverage inference time:")
+    print("\nAverage inference time:")
     print(f"  ViT-B: {avg_b_time:5.1f}s")
     print(f"  ViT-L: {avg_l_time:5.1f}s ({avg_time_ratio_l_b:.2f}x)")
     print(f"  ViT-H: {avg_h_time:5.1f}s ({avg_time_ratio_h_b:.2f}x)")
-    print(f"\nModel comparisons:")
+    print("\nModel comparisons:")
     print(
-        f"  ViT-L vs ViT-B: {avg_diff_l_b:+.1f} segments ({(avg_diff_l_b/avg_b_segments*100):+.1f}%), {avg_time_ratio_l_b:.2f}x time"
+        f"  ViT-L vs ViT-B: {avg_diff_l_b:+.1f} segments "
+        f"({(avg_diff_l_b/avg_b_segments*100):+.1f}%), {avg_time_ratio_l_b:.2f}x time"
     )
     print(
-        f"  ViT-H vs ViT-L: {avg_diff_h_l:+.1f} segments ({(avg_diff_h_l/avg_l_segments*100):+.1f}%), {avg_time_ratio_h_l:.2f}x time"
+        f"  ViT-H vs ViT-L: {avg_diff_h_l:+.1f} segments "
+        f"({(avg_diff_h_l/avg_l_segments*100):+.1f}%), {avg_time_ratio_h_l:.2f}x time"
     )
     print(
-        f"  ViT-H vs ViT-B: {avg_diff_h_b:+.1f} segments ({(avg_diff_h_b/avg_b_segments*100):+.1f}%), {avg_time_ratio_h_b:.2f}x time"
+        f"  ViT-H vs ViT-B: {avg_diff_h_b:+.1f} segments "
+        f"({(avg_diff_h_b/avg_b_segments*100):+.1f}%), {avg_time_ratio_h_b:.2f}x time"
     )
     print(f"\n✓ Results saved to: {csv_path}")
     print(f"✓ Maps saved to: {output_dir}")

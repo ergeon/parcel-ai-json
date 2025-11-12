@@ -106,7 +106,8 @@ def batch_compare(images_dir: str, output_dir: str, max_images: int = None):
         time_ratio = time_l / time_b if time_b > 0 else 0
 
         print(
-            f"  Difference: {diff_segments:+d} segments ({diff_percent:+.1f}%), {time_ratio:.2f}x time"
+            f"  Difference: {diff_segments:+d} segments "
+            f"({diff_percent:+.1f}%), {time_ratio:.2f}x time"
         )
 
         # Store results
@@ -155,11 +156,11 @@ def batch_compare(images_dir: str, output_dir: str, max_images: int = None):
     avg_time_ratio = sum(r["time_ratio"] for r in results) / len(results)
 
     print(f"Images processed: {len(results)}")
-    print(f"\nAverage segments:")
+    print("\nAverage segments:")
     print(f"  ViT-B: {avg_b_segments:.1f}")
     print(f"  ViT-L: {avg_l_segments:.1f}")
     print(f"  Difference: {avg_diff:+.1f} ({(avg_diff/avg_b_segments*100):+.1f}%)")
-    print(f"\nAverage inference time:")
+    print("\nAverage inference time:")
     print(f"  ViT-B: {avg_b_time:.1f}s")
     print(f"  ViT-L: {avg_l_time:.1f}s")
     print(f"  Ratio: {avg_time_ratio:.2f}x")

@@ -6,13 +6,13 @@ Tests SAM on a sample satellite image and visualizes the results.
 import sys
 from pathlib import Path
 import json
+import numpy as np
+from PIL import Image
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.sam_segmentation import SAMSegmentationService
-from PIL import Image
-import numpy as np
+from parcel_ai_json.sam_segmentation import SAMSegmentationService  # noqa: E402
 
 
 def test_sam_on_satellite_image():
@@ -63,7 +63,8 @@ def test_sam_on_satellite_image():
         print(f"ERROR: {e}")
         print("\nPlease download the SAM model checkpoint:")
         print(
-            "cd models && curl -L -o sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+            "cd models && curl -L -o sam_vit_b_01ec64.pth "
+            "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
         )
         return
     except Exception as e:
@@ -95,23 +96,23 @@ def test_sam_on_satellite_image():
         stability_scores = [s.stability_score for s in segments]
         iou_scores = [s.predicted_iou for s in segments]
 
-        print(f"\nSegment area statistics (pixels):")
+        print("\nSegment area statistics (pixels):")
         print(f"  Min: {min(areas_pixels)}")
         print(f"  Max: {max(areas_pixels)}")
         print(f"  Mean: {sum(areas_pixels) / len(areas_pixels):.1f}")
 
-        print(f"\nStability score statistics:")
+        print("\nStability score statistics:")
         print(f"  Min: {min(stability_scores):.3f}")
         print(f"  Max: {max(stability_scores):.3f}")
         print(f"  Mean: {sum(stability_scores) / len(stability_scores):.3f}")
 
-        print(f"\nPredicted IoU statistics:")
+        print("\nPredicted IoU statistics:")
         print(f"  Min: {min(iou_scores):.3f}")
         print(f"  Max: {max(iou_scores):.3f}")
         print(f"  Mean: {sum(iou_scores) / len(iou_scores):.3f}")
 
         # Show first 5 segments
-        print(f"\nFirst 5 segments:")
+        print("\nFirst 5 segments:")
         for i, seg in enumerate(segments[:5]):
             print(
                 f"  [{i}] ID={seg.segment_id}, area={seg.area_pixels}px, "
@@ -147,7 +148,6 @@ def create_visualization(image_path: Path, segments, output_dir: Path):
     """Create a visualization of SAM segments overlaid on the image."""
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
-    from matplotlib.collections import PatchCollection
     import random
 
     # Load image
