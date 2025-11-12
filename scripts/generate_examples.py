@@ -79,6 +79,7 @@ def generate_folium_map(
     center_lat,
     center_lon,
     tree_count=0.0,
+    sam_segments=None,
 ):
     """Generate interactive Folium map with satellite imagery and vehicle detections.
 
@@ -89,7 +90,11 @@ def generate_folium_map(
         image_name: Name of the image
         center_lat: Center latitude
         center_lon: Center longitude
+        tree_count: Tree coverage percentage
+        sam_segments: List of SAM segment objects (optional)
     """
+    if sam_segments is None:
+        sam_segments = []
     # Get image dimensions
     from PIL import Image
 
@@ -171,6 +176,7 @@ def generate_folium_map(
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
     amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
     tree_group = folium.FeatureGroup(name="🌳 Trees (DeepForest)", show=True)
+    sam_group = folium.FeatureGroup(name=f"🔍 SAM Segments ({len(sam_segments)})", show=False)
 
     # Add vehicle, swimming pool, amenity, and tree detections
     vehicle_count = 0
@@ -303,11 +309,39 @@ def generate_folium_map(
             ),
         ).add_to(feature_group)
 
+    # Add SAM segments with semi-transparent fill
+    for segment in sam_segments:
+        # Use different colors based on area
+        if segment.area_pixels < 500:
+            color = "#3388ff"  # Blue for small segments
+        elif segment.area_pixels < 2000:
+            color = "#00ff00"  # Green for medium
+        else:
+            color = "#ff0000"  # Red for large
+
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in segment.geo_polygon],
+            color=color,
+            weight=1,
+            fill=True,
+            fillColor=color,
+            fillOpacity=0.2,
+            popup=folium.Popup(
+                f"<b>SAM Segment #{segment.segment_id}</b><br>"
+                f"Area: {segment.area_pixels} pixels<br>"
+                f"Stability: {segment.stability_score:.3f}<br>"
+                f"IoU: {segment.predicted_iou:.3f}",
+                max_width=250,
+            ),
+            tooltip=f"SAM #{segment.segment_id}",
+        ).add_to(sam_group)
+
     # Add all feature groups to map
     vehicle_group.add_to(m)
     pool_group.add_to(m)
     amenity_group.add_to(m)
     tree_group.add_to(m)
+    sam_group.add_to(m)
 
     # Add layer control with checkboxes
     folium.LayerControl(collapsed=False).add_to(m)
@@ -315,11 +349,11 @@ def generate_folium_map(
     # Add title
     title_html = f"""
         <div style="position: fixed;
-                    top: 10px; left: 50px; width: 800px; height: 90px;
+                    top: 10px; left: 50px; width: 900px; height: 90px;
                     background-color: white; border:2px solid grey; z-index:9999;
                     font-size:14px; padding: 10px">
         <h4>{image_name}</h4>
-        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_count:.1f}%
+        <b>Vehicles:</b> {vehicle_count} &nbsp;&nbsp; <b>Pools:</b> {pool_count} &nbsp;&nbsp; <b>Amenities:</b> {amenity_count} &nbsp;&nbsp; <b>Tree Clusters:</b> {tree_cluster_count} &nbsp;&nbsp; <b>Tree Coverage:</b> {tree_count:.1f}% &nbsp;&nbsp; <b>SAM Segments:</b> {len(sam_segments)}
         </div>
     """
     m.get_root().html.add_child(folium.Element(title_html))
@@ -617,6 +651,21 @@ def generate_examples(num_examples=20):
             # Detect all property features
             detections = detector.detect_all(satellite_image)
 
+            # Run SAM segmentation (ViT-H for highest accuracy)
+            from parcel_ai_json.sam_segmentation import SAMSegmentationService
+
+            print("  Running SAM segmentation...")
+            sam_service = SAMSegmentationService(
+                model_type="vit_h",
+                device="cpu",
+                points_per_side=16,  # Faster inference
+                pred_iou_thresh=0.88,
+                stability_score_thresh=0.95,
+                min_mask_region_area=100,
+            )
+            sam_segments = sam_service.segment_image(satellite_image)
+            print(f"  ✓ SAM: {len(sam_segments)} segments detected")
+
             # Generate combined GeoJSON
             combined_geojson = detections.to_geojson()
 
@@ -646,6 +695,24 @@ def generate_examples(num_examples=20):
 
             print(f"  ✓ Saved to: geojson/{output_filename}")
 
+            # Generate folium map immediately
+            folium_dir = output_dir / "folium_maps"
+            folium_dir.mkdir(exist_ok=True)
+            folium_path = folium_dir / f"{img_path.stem}.html"
+
+            print(f"  Generating folium map with {len(sam_segments)} SAM segments...")
+            generate_folium_map(
+                satellite_image_path=img_path,
+                geojson_data=combined_geojson,
+                output_path=folium_path,
+                image_name=img_name,
+                center_lat=lat,
+                center_lon=lon,
+                tree_count=summary["tree_count"],
+                sam_segments=sam_segments,
+            )
+            print(f"  ✓ Folium map saved to: folium_maps/{img_path.stem}.html")
+
             results.append(
                 {
                     "image": img_name,
@@ -656,6 +723,7 @@ def generate_examples(num_examples=20):
                     "output_file": output_filename,
                     "coordinates": {"lat": lat, "lon": lon},
                     "geojson": combined_geojson,
+                    "sam_segments": sam_segments,
                 }
             )
 
@@ -680,14 +748,17 @@ def generate_examples(num_examples=20):
     print(f"Total vehicles detected: {total_vehicles}")
     print(f"Total swimming pools detected: {total_pools}")
 
-    # Save results summary
+    # Save results summary (exclude sam_segments from JSON as they're not serializable)
     summary_path = output_dir / "summary.json"
+    results_for_json = [
+        {k: v for k, v in r.items() if k != "sam_segments"} for r in results
+    ]
     with open(summary_path, "w") as f:
         json.dump(
             {
                 "total_processed": processed,
                 "total_skipped": skipped,
-                "results": results,
+                "results": results_for_json,
             },
             f,
             indent=2,
@@ -723,35 +794,8 @@ def generate_examples(num_examples=20):
 
     print(f"✓ HTML visualization saved to: {html_path}")
 
-    # Generate Folium interactive maps
-    print("\nGenerating Folium interactive maps...")
+    # Folium maps already generated during processing
     folium_dir = output_dir / "folium_maps"
-    folium_dir.mkdir(exist_ok=True)
-
-    geojson_dir = output_dir / "geojson"
-
-    for result in results:
-        img_name = result["image"]
-        geojson_file = geojson_dir / result["output_file"]
-        sat_img = satellite_dir / img_name
-
-        # Load GeoJSON
-        with open(geojson_file, "r") as f:
-            geojson_data = json.load(f)
-
-        # Generate Folium map
-        folium_path = folium_dir / f"{Path(img_name).stem}.html"
-        generate_folium_map(
-            satellite_image_path=sat_img,
-            geojson_data=geojson_data,
-            output_path=folium_path,
-            image_name=img_name,
-            center_lat=result["coordinates"]["lat"],
-            center_lon=result["coordinates"]["lon"],
-            tree_count=result.get("tree_count", 0.0),
-        )
-
-    print(f"✓ Generated {len(results)} Folium maps in: {folium_dir}")
     print(f"\n✓ All outputs saved to: {output_dir}")
     print(f"\n📂 Open {html_path} in your browser to view portfolio")
     print(f"📂 Open files in {folium_dir}/ to view individual interactive maps")
