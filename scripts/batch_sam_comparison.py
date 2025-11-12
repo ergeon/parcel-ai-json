@@ -105,19 +105,23 @@ def batch_compare(images_dir: str, output_dir: str, max_images: int = None):
         diff_percent = (diff_segments / len(segments_b) * 100) if len(segments_b) > 0 else 0
         time_ratio = time_l / time_b if time_b > 0 else 0
 
-        print(f"  Difference: {diff_segments:+d} segments ({diff_percent:+.1f}%), {time_ratio:.2f}x time")
+        print(
+            f"  Difference: {diff_segments:+d} segments ({diff_percent:+.1f}%), {time_ratio:.2f}x time"
+        )
 
         # Store results
-        results.append({
-            "image": image_path.name,
-            "vit_b_segments": len(segments_b),
-            "vit_b_time": time_b,
-            "vit_l_segments": len(segments_l),
-            "vit_l_time": time_l,
-            "diff_segments": diff_segments,
-            "diff_percent": diff_percent,
-            "time_ratio": time_ratio,
-        })
+        results.append(
+            {
+                "image": image_path.name,
+                "vit_b_segments": len(segments_b),
+                "vit_b_time": time_b,
+                "vit_l_segments": len(segments_l),
+                "vit_l_time": time_l,
+                "diff_segments": diff_segments,
+                "diff_percent": diff_percent,
+                "time_ratio": time_ratio,
+            }
+        )
 
         # Create comparison maps
         print("  Creating comparison maps...")

@@ -75,9 +75,7 @@ def create_folium_map(geojson, lat, lon, output_path):
         props = feature["properties"]
         if ft == "vehicle":
             label = props.get("vehicle_class", "vehicle").title()
-            popup = (
-                f"<b>Vehicle</b><br>{label}<br>Conf: {props.get('confidence', 0):.1%}"
-            )
+            popup = f"<b>Vehicle</b><br>{label}<br>Conf: {props.get('confidence', 0):.1%}"
         elif ft == "swimming_pool":
             popup = f"<b>Pool</b><br>{props.get('area_sqm', 0):.1f}m²"
             label = "Pool"

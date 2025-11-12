@@ -131,16 +131,13 @@ class SAMSegmentationService:
             checkpoint_file = checkpoint_files.get(self.model_type)
             if not checkpoint_file:
                 raise ValueError(
-                    f"Invalid model_type: {self.model_type}. "
-                    "Must be one of: vit_b, vit_l, vit_h"
+                    f"Invalid model_type: {self.model_type}. " "Must be one of: vit_b, vit_l, vit_h"
                 )
 
             checkpoint_path = models_dir / checkpoint_file
 
             if not checkpoint_path.exists():
-                download_url = (
-                    f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
-                )
+                download_url = f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
                 raise FileNotFoundError(
                     f"Model checkpoint not found: {checkpoint_path}\n"
                     f"Download from: {download_url}"

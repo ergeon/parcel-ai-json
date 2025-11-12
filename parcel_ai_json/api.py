@@ -102,22 +102,16 @@ async def detect_property(
         raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
 
     if not -90 <= center_lat <= 90:
-        raise HTTPException(
-            status_code=400, detail="Latitude must be between -90 and 90"
-        )
+        raise HTTPException(status_code=400, detail="Latitude must be between -90 and 90")
 
     if not -180 <= center_lon <= 180:
-        raise HTTPException(
-            status_code=400, detail="Longitude must be between -180 and 180"
-        )
+        raise HTTPException(status_code=400, detail="Longitude must be between -180 and 180")
 
     if not 1 <= zoom_level <= 22:
         raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
 
     if format not in ["geojson", "summary"]:
-        raise HTTPException(
-            status_code=400, detail="Format must be 'geojson' or 'summary'"
-        )
+        raise HTTPException(status_code=400, detail="Format must be 'geojson' or 'summary'")
 
     # Save uploaded file to temporary location
     temp_dir = None
@@ -149,9 +143,7 @@ async def detect_property(
         else:
             # Return full GeoJSON
             geojson = detector.detect_all_geojson(satellite_image)
-            logger.info(
-                f"Detection complete: {len(geojson['features'])} features found"
-            )
+            logger.info(f"Detection complete: {len(geojson['features'])} features found")
             return JSONResponse(content=geojson)
 
     except Exception as e:
@@ -201,9 +193,7 @@ async def detect_vehicles(
 
     except Exception as e:
         logger.error(f"Vehicle detection failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Vehicle detection failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Vehicle detection failed: {str(e)}")
 
     finally:
         if temp_dir and temp_dir.exists():
@@ -291,9 +281,7 @@ async def detect_amenities(
 
     except Exception as e:
         logger.error(f"Amenity detection failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Amenity detection failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Amenity detection failed: {str(e)}")
 
     finally:
         if temp_dir and temp_dir.exists():

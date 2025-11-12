@@ -83,9 +83,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     vehicle_service = VehicleDetectionService(confidence_threshold=0.25)
     pool_service = SwimmingPoolDetectionService(confidence_threshold=0.3)
     amenity_service = AmenityDetectionService(confidence_threshold=0.3)
-    tree_service = TreeDetectionService(
-        detectree_use_docker=False
-    )  # Use native mode inside Docker
+    tree_service = TreeDetectionService(detectree_use_docker=False)  # Use native mode inside Docker
 
     vehicles = vehicle_service.detect_vehicles(satellite_image)
     pools = pool_service.detect_swimming_pools(satellite_image)
@@ -111,9 +109,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         if detections.trees and detections.trees.tree_polygons
         else 0
     )
-    print(
-        f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)"
-    )
+    print(f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)")
 
     # Get image dimensions
     from PIL import Image
@@ -161,12 +157,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     ).add_to(m)
 
     # Create feature groups for layer control
-    sam_group = folium.FeatureGroup(
-        name=f"SAM Segments ({len(sam_segments)})", show=True
-    )
-    vehicles_group = folium.FeatureGroup(
-        name=f"Vehicles ({len(detections.vehicles)})", show=True
-    )
+    sam_group = folium.FeatureGroup(name=f"SAM Segments ({len(sam_segments)})", show=True)
+    vehicles_group = folium.FeatureGroup(name=f"Vehicles ({len(detections.vehicles)})", show=True)
     pools_group = folium.FeatureGroup(
         name=f"Swimming Pools ({len(detections.swimming_pools)})", show=True
     )
@@ -174,9 +166,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         name=f"Amenities ({len(detections.amenities)})", show=True
     )
     # Separate feature groups for DeepForest and detectree
-    deepforest_group = folium.FeatureGroup(
-        name=f"Trees - DeepForest ({tree_count})", show=True
-    )
+    deepforest_group = folium.FeatureGroup(name=f"Trees - DeepForest ({tree_count})", show=True)
     detectree_group = folium.FeatureGroup(
         name=f"Tree Coverage - detectree ({polygon_count})", show=True
     )
@@ -386,8 +376,6 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
 if __name__ == "__main__":
     # Use the same image we tested SAM on
     image_path = "output/examples/images/672_white_oak_ln_vacaville_ca_95687.jpg"
-    output_path = (
-        "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
-    )
+    output_path = "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
 
     create_enhanced_folium_map(image_path, output_path)

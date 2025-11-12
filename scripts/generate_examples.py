@@ -128,11 +128,7 @@ def generate_folium_map(
         with open(satellite_image_path, "rb") as f:
             img_data = f.read()
 
-        img_format = (
-            "jpeg"
-            if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"]
-            else "png"
-        )
+        img_format = "jpeg" if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"] else "png"
         img_base64 = base64.b64encode(img_data).decode()
         img_url = f"data:image/{img_format};base64,{img_base64}"
 
@@ -153,9 +149,7 @@ def generate_folium_map(
         ).add_to(m)
 
     # Add tree mask overlay if it exists
-    tree_mask_path = (
-        satellite_image_path.parent / f"{satellite_image_path.stem}_tree_mask.png"
-    )
+    tree_mask_path = satellite_image_path.parent / f"{satellite_image_path.stem}_tree_mask.png"
     if tree_mask_path.exists():
         with open(tree_mask_path, "rb") as f:
             tree_mask_data = f.read()
@@ -441,9 +435,7 @@ def generate_html_visualization(results, output_dir):
 
         detection_parts = []
         if vehicle_count > 0:
-            detection_parts.append(
-                f"{vehicle_count} vehicle{'s' if vehicle_count != 1 else ''}"
-            )
+            detection_parts.append(f"{vehicle_count} vehicle{'s' if vehicle_count != 1 else ''}")
         if pool_count > 0:
             detection_parts.append(f"{pool_count} pool{'s' if pool_count != 1 else ''}")
 
@@ -631,12 +623,7 @@ def generate_examples(num_examples=20):
             # Get summary
             summary = detections.summary()
             amenity_summary = (
-                ", ".join(
-                    [
-                        f"{count} {atype}"
-                        for atype, count in summary["amenities"].items()
-                    ]
-                )
+                ", ".join([f"{count} {atype}" for atype, count in summary["amenities"].items()])
                 if summary["amenities"]
                 else "none"
             )

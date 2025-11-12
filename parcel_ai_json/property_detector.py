@@ -61,22 +61,16 @@ class PropertyDetections:
 
         # Include DeepForest statistics if available
         if self.trees.average_confidence is not None:
-            tree_metadata["average_confidence"] = round(
-                self.trees.average_confidence, 3
-            )
+            tree_metadata["average_confidence"] = round(self.trees.average_confidence, 3)
         if self.trees.average_crown_area_sqm is not None:
-            tree_metadata["average_crown_area_sqm"] = round(
-                self.trees.average_crown_area_sqm, 2
-            )
+            tree_metadata["average_crown_area_sqm"] = round(self.trees.average_crown_area_sqm, 2)
 
         # Include detectree statistics if available
         if (
             hasattr(self.trees, "tree_coverage_percent")
             and self.trees.tree_coverage_percent is not None
         ):
-            tree_metadata["tree_coverage_percent"] = round(
-                self.trees.tree_coverage_percent, 2
-            )
+            tree_metadata["tree_coverage_percent"] = round(self.trees.tree_coverage_percent, 2)
         if hasattr(self.trees, "tree_pixel_count"):
             tree_metadata["tree_pixel_count"] = self.trees.tree_pixel_count
 
@@ -106,18 +100,14 @@ class PropertyDetections:
         if self.trees.average_confidence is not None:
             summary["average_tree_confidence"] = round(self.trees.average_confidence, 3)
         if self.trees.average_crown_area_sqm is not None:
-            summary["average_crown_area_sqm"] = round(
-                self.trees.average_crown_area_sqm, 2
-            )
+            summary["average_crown_area_sqm"] = round(self.trees.average_crown_area_sqm, 2)
 
         # Add detectree tree statistics if available
         if (
             hasattr(self.trees, "tree_coverage_percent")
             and self.trees.tree_coverage_percent is not None
         ):
-            summary["tree_coverage_percent"] = round(
-                self.trees.tree_coverage_percent, 2
-            )
+            summary["tree_coverage_percent"] = round(self.trees.tree_coverage_percent, 2)
         if hasattr(self.trees, "tree_polygons") and self.trees.tree_polygons:
             summary["tree_polygon_count"] = len(self.trees.tree_polygons)
 
