@@ -78,11 +78,17 @@ print('DeepForest will download model on first use'); \
 print('Model cache directory: /root/.cache/torch'); \
 "
 
-# Pre-download SAM model (ViT-B variant for speed/quality balance)
+# Pre-download SAM models (ViT-H for highest accuracy, ViT-B and ViT-L for comparison)
 RUN mkdir -p /app/models && \
     cd /app/models && \
-    wget -q https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && \
-    echo "SAM ViT-B model downloaded to /app/models/"
+    echo "Downloading SAM ViT-B model (358MB)..." && \
+    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && \
+    echo "Downloading SAM ViT-L model (~1.2GB)..." && \
+    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth && \
+    echo "Downloading SAM ViT-H model (~2.4GB) - DEFAULT for highest accuracy..." && \
+    wget -q --show-progress https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth && \
+    echo "SAM models downloaded to /app/models/" && \
+    ls -lh /app/models/
 
 # Create directory for temporary file uploads
 RUN mkdir -p /tmp/uploads && chmod 777 /tmp/uploads

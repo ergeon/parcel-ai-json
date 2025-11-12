@@ -59,9 +59,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print("=" * 80)
 
     # Run SAM segmentation
-    print("1. Running SAM segmentation...")
+    print("1. Running SAM segmentation (ViT-H for highest accuracy)...")
     sam_service = SAMSegmentationService(
-        model_type="vit_b",
+        model_type="vit_h",
         device="cpu",
         points_per_side=16,  # Faster inference
         pred_iou_thresh=0.88,

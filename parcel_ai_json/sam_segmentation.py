@@ -72,7 +72,7 @@ class SAMSegmentationService:
 
     def __init__(
         self,
-        model_type: str = "vit_b",
+        model_type: str = "vit_h",
         model_path: Optional[str] = None,
         device: str = "cpu",
         points_per_side: int = 32,
@@ -84,6 +84,7 @@ class SAMSegmentationService:
 
         Args:
             model_type: SAM model type ('vit_b', 'vit_l', or 'vit_h')
+                       Default: 'vit_h' for highest accuracy
             model_path: Path to model checkpoint (if None, auto-detects from models/)
             device: Device to run inference on ('cpu' or 'cuda')
             points_per_side: Number of points per side for automatic mask generation
