@@ -25,7 +25,13 @@ class TestTreePolygon(unittest.TestCase):
             (-122.4194, 37.7748),
             (-122.4194, 37.7749),
         ]
-        pixel_polygon = [(100, 100), (150, 100), (150, 150), (100, 150), (100, 100)]
+        pixel_polygon = [
+            (100, 100),
+            (150, 100),
+            (150, 150),
+            (100, 150),
+            (100, 100),
+        ]
 
         polygon = TreePolygon(
             geo_polygon=geo_polygon,
@@ -48,7 +54,13 @@ class TestTreePolygon(unittest.TestCase):
             (-122.4194, 37.7748),
             (-122.4194, 37.7749),
         ]
-        pixel_polygon = [(100, 100), (150, 100), (150, 150), (100, 150), (100, 100)]
+        pixel_polygon = [
+            (100, 100),
+            (150, 100),
+            (150, 150),
+            (100, 150),
+            (100, 100),
+        ]
 
         polygon = TreePolygon(
             geo_polygon=geo_polygon,
@@ -73,7 +85,13 @@ class TestTreePolygon(unittest.TestCase):
             (-122.4194, 37.7748),
             (-122.4194, 37.7749),
         ]
-        pixel_polygon = [(100, 100), (150, 100), (150, 150), (100, 150), (100, 100)]
+        pixel_polygon = [
+            (100, 100),
+            (150, 100),
+            (150, 150),
+            (100, 150),
+            (100, 100),
+        ]
 
         polygon = TreePolygon(
             geo_polygon=geo_polygon,
@@ -256,7 +274,10 @@ class TestTreeDetectionService(unittest.TestCase):
         self.assertEqual(len(polygons), 0)
 
     @patch("detectree.Classifier")
-    def test_detect_trees_with_polygons_native(self, mock_classifier_class):
+    @patch("PIL.Image.open")
+    def test_detect_trees_with_polygons_native(
+        self, mock_image_open, mock_classifier_class
+    ):
         """Test tree detection with polygon extraction in native mode."""
         service = TreeDetectionService(
             detectree_use_docker=False,
@@ -275,81 +296,97 @@ class TestTreeDetectionService(unittest.TestCase):
 
         mock_clf.predict_img.return_value = y_pred
 
+        # Mock PIL Image with actual numpy array
+        mock_img = Mock()
+        mock_img.size = (100, 100)
+        # Return RGB image as numpy array
+        mock_rgb_img = Mock()
+        mock_img.convert.return_value = mock_rgb_img
+        # Create realistic RGB image data
+        rgb_array = np.random.randint(
+            0, 255, (100, 100, 3), dtype=np.uint8
+        )
+        mock_rgb_img.__array__ = lambda: rgb_array
+        mock_image_open.return_value = mock_img
+
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
             tmp_path = Path(tmp_file.name)
 
         try:
-            # Mock PIL Image
-            with patch("PIL.Image") as mock_image:
-                mock_img = Mock()
-                mock_img.convert.return_value = mock_img
-                mock_img.size = (100, 100)
-                mock_image.open.return_value = mock_img
+            satellite_image = {
+                "path": str(tmp_path),
+                "center_lat": 37.7749,
+                "center_lon": -122.4194,
+                "zoom_level": 20,
+            }
 
-                satellite_image = {
-                    "path": str(tmp_path),
-                    "center_lat": 37.7749,
-                    "center_lon": -122.4194,
-                    "zoom_level": 20,
-                }
+            detection = service.detect_trees(satellite_image)
 
-                detection = service.detect_trees(satellite_image)
+            # Verify results
+            self.assertEqual(detection.tree_pixel_count, 800)  # 400 + 400
+            self.assertIsNotNone(detection.tree_polygons)
+            self.assertEqual(len(detection.tree_polygons), 2)
 
-                # Verify results
-                self.assertEqual(detection.tree_pixel_count, 800)  # 400 + 400
-                self.assertIsNotNone(detection.tree_polygons)
-                self.assertEqual(len(detection.tree_polygons), 2)
-
-                # Check polygon properties
-                for polygon in detection.tree_polygons:
-                    self.assertGreater(polygon.area_pixels, 50)
-                    self.assertGreater(polygon.area_sqm, 0)
-                    self.assertGreater(len(polygon.geo_polygon), 0)
+            # Check polygon properties
+            for polygon in detection.tree_polygons:
+                self.assertGreater(polygon.area_pixels, 50)
+                self.assertGreater(polygon.area_sqm, 0)
+                self.assertGreater(len(polygon.geo_polygon), 0)
 
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    def test_detect_trees_without_polygons(self):
+    @patch("PIL.Image.open")
+    @patch("detectree.Classifier")
+    def test_detect_trees_without_polygons(
+        self, mock_classifier_class, mock_image_open
+    ):
         """Test tree detection without polygon extraction."""
         service = TreeDetectionService(
             detectree_use_docker=False, detectree_extract_polygons=False
         )
 
-        with patch("detectree.Classifier") as mock_classifier_class:
-            mock_clf = Mock()
-            mock_classifier_class.return_value = mock_clf
+        # Mock detectree classifier
+        mock_clf = Mock()
+        mock_classifier_class.return_value = mock_clf
 
-            y_pred = np.zeros((100, 100), dtype=np.uint8)
-            y_pred[10:30, 10:30] = 1
-            mock_clf.predict_img.return_value = y_pred
+        y_pred = np.zeros((100, 100), dtype=np.uint8)
+        y_pred[10:30, 10:30] = 1
+        mock_clf.predict_img.return_value = y_pred
 
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-                tmp_path = Path(tmp_file.name)
+        # Mock PIL Image with actual numpy array
+        mock_img = Mock()
+        mock_img.size = (100, 100)
+        mock_rgb_img = Mock()
+        mock_img.convert.return_value = mock_rgb_img
+        # Create realistic RGB image data
+        rgb_array = np.random.randint(
+            0, 255, (100, 100, 3), dtype=np.uint8
+        )
+        mock_rgb_img.__array__ = lambda: rgb_array
+        mock_image_open.return_value = mock_img
 
-            try:
-                with patch("PIL.Image") as mock_image:
-                    mock_img = Mock()
-                    mock_img.convert.return_value = mock_img
-                    mock_img.size = (100, 100)
-                    mock_image.open.return_value = mock_img
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_path = Path(tmp_file.name)
 
-                    satellite_image = {
-                        "path": str(tmp_path),
-                        "center_lat": 37.7749,
-                        "center_lon": -122.4194,
-                        "zoom_level": 20,
-                    }
+        try:
+            satellite_image = {
+                "path": str(tmp_path),
+                "center_lat": 37.7749,
+                "center_lon": -122.4194,
+                "zoom_level": 20,
+            }
 
-                    detection = service.detect_trees(satellite_image)
+            detection = service.detect_trees(satellite_image)
 
-                    # Should not have polygons
-                    self.assertIsNone(detection.tree_polygons)
+            # Should not have polygons
+            self.assertIsNone(detection.tree_polygons)
 
-            finally:
-                if tmp_path.exists():
-                    tmp_path.unlink()
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
 
     def test_polygon_simplification(self):
         """Test polygon simplification reduces vertex count."""
