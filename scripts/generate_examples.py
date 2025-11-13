@@ -264,6 +264,9 @@ def generate_folium_map(
             fill_color = "#FF6B00"  # Orange for amenities
             line_color = "#CC5500"
             feature_group = amenity_group
+        elif feature_type == "labeled_sam_segment":
+            # Skip SAM segments in folium map for now (too many)
+            continue
         else:
             confidence = feature["properties"]["confidence"]
             pixel_bbox = feature["properties"]["pixel_bbox"]
