@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from parcel_ai_json.sam_segmentation import SAMSegmentationService  # noqa: E402
+from parcel_ai_json.sam_labeler import SAMSegmentLabeler  # noqa: E402
 import folium  # noqa: E402
 
 
@@ -138,8 +139,30 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         [image_bounds_dict["north"], image_bounds_dict["east"]],
     ]
 
+    # Label SAM segments
+    print("3. Labeling SAM segments...")
+    labeler = SAMSegmentLabeler(overlap_threshold=0.3)
+    detection_dict = {
+        "vehicles": detections.vehicles or [],
+        "pools": detections.swimming_pools or [],
+        "amenities": detections.amenities or [],
+        "trees": detections.trees.trees if detections.trees else [],
+        "tree_polygons": (
+            detections.trees.tree_polygons
+            if detections.trees and detections.trees.tree_polygons
+            else []
+        ),
+    }
+    sam_segments = labeler.label_segments(sam_segments, detection_dict)
+    label_counts = {}
+    for seg in sam_segments:
+        label = seg.primary_label
+        label_counts[label] = label_counts.get(label, 0) + 1
+    print(f"   ✓ Labeled {len(sam_segments)} segments: {sum(1 for seg in sam_segments if seg.primary_label != 'unknown')} with semantic labels")
+    print(f"   Label distribution: {', '.join(f'{k}: {v}' for k, v in sorted(label_counts.items(), key=lambda x: x[1], reverse=True))}")
+
     # Create folium map
-    print("3. Creating folium map...")
+    print("4. Creating folium map...")
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=20,
@@ -172,15 +195,17 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     )
 
     # Add SAM segments with semi-transparent fill
-    print("4. Adding SAM segments to map...")
+    print("5. Adding labeled SAM segments to map...")
     for i, segment in enumerate(sam_segments):
-        # Use different colors based on area
-        if segment.area_pixels < 500:
-            color = "#3388ff"  # Blue for small segments
-        elif segment.area_pixels < 2000:
-            color = "#00ff00"  # Green for medium
-        else:
-            color = "#ff0000"  # Red for large
+        # Use label-based colors from LABEL_SCHEMA
+        from parcel_ai_json.sam_labeler import LABEL_SCHEMA
+        label = segment.primary_label
+        color = LABEL_SCHEMA.get(label, LABEL_SCHEMA['unknown'])['color']
+
+        # Build label display
+        label_display = label.replace('_', ' ').title()
+        if segment.label_subtype:
+            label_display += f" ({segment.label_subtype})"
 
         folium.Polygon(
             locations=[(lat, lon) for lon, lat in segment.geo_polygon],
@@ -188,19 +213,21 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             weight=1,
             fill=True,
             fillColor=color,
-            fillOpacity=0.2,
+            fillOpacity=0.3,
             popup=folium.Popup(
-                f"<b>SAM Segment #{segment.segment_id}</b><br>"
-                f"Area: {segment.area_pixels} pixels<br>"
+                f"<b>{label_display}</b><br>"
+                f"Confidence: {segment.label_confidence:.2f}<br>"
+                f"Source: {segment.label_source}<br>"
+                f"Area: {segment.area_sqm:.1f} m² ({segment.area_pixels} px)<br>"
                 f"Stability: {segment.stability_score:.3f}<br>"
-                f"IoU: {segment.predicted_iou:.3f}",
-                max_width=250,
+                f"Reason: {segment.labeling_reason or 'N/A'}",
+                max_width=300,
             ),
-            tooltip=f"SAM #{segment.segment_id}",
+            tooltip=label_display,
         ).add_to(sam_group)
 
     # Add vehicles with purple markers
-    print("5. Adding vehicles to map...")
+    print("6. Adding vehicles to map...")
     for i, vehicle in enumerate(detections.vehicles):
         # Get center of polygon
         lons, lats = zip(*vehicle.geo_polygon[:-1])  # Exclude closing point
