@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples docker-build docker-build-clean docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
+.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples generate-examples-10 generate-examples-20 docker-build docker-build-clean docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
 
 # Default target
 .DEFAULT_GOAL := help
@@ -11,6 +11,7 @@ PIP := $(VENV_BIN)/pip
 PYTEST := $(VENV_BIN)/pytest
 PYTHONPATH := .
 PROJECT_VERSION := $(shell $(PYTHON) -W ignore setup.py --version)
+NUM_EXAMPLES ?= 3
 
 # Docker configuration
 DOCKER_IMAGE := parcel-ai-json
@@ -74,8 +75,14 @@ clean: ## Clean up generated files
 clean-all: clean ## Clean everything including virtualenv
 	rm -rf $(VENV)
 
-generate-examples: ## Generate vehicle detection examples
-	@source $(VENV_BIN)/activate && PYTHONPATH=$(PYTHONPATH) $(PYTHON) scripts/generate_examples.py
+generate-examples: ## Generate detection examples with labeled SAM segmentation (default: 3 examples)
+	@source $(VENV_BIN)/activate && PYTHONPATH=$(PYTHONPATH) $(PYTHON) -u scripts/generate_examples.py --num-examples $(NUM_EXAMPLES) 2>&1 | tee /tmp/generate_examples.log
+
+generate-examples-10: ## Generate 10 detection examples with labeled SAM segmentation
+	@$(MAKE) generate-examples NUM_EXAMPLES=10
+
+generate-examples-20: ## Generate 20 detection examples with labeled SAM segmentation
+	@$(MAKE) generate-examples NUM_EXAMPLES=20
 
 dev-setup: install ## Set up development environment
 	@echo "Development environment ready!"
