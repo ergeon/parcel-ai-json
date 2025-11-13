@@ -106,7 +106,10 @@ async def detect_property(
     format: str = Form("geojson", description="Output format: 'geojson' or 'summary'"),
     include_sam: bool = Form(False, description="Include SAM segmentation (default: False)"),
     sam_points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
-    label_sam_segments: bool = Form(True, description="Label SAM segments with semantic labels (default: True)"),
+    label_sam_segments: bool = Form(
+        True,
+        description="Label SAM segments with semantic labels (default: True)"
+    ),
 ):
     """Detect all property features in satellite image.
 
@@ -220,12 +223,23 @@ async def detect_property(
                         ),
                     }
 
-                    # Label segments
-                    labeler = SAMSegmentLabeler(overlap_threshold=0.3)
-                    sam_segments = labeler.label_segments(sam_segments, detection_dict)
+                    # Label segments (with OSM buildings support)
+                    labeler = SAMSegmentLabeler(
+                        overlap_threshold=0.3,
+                        osm_overlap_threshold=0.5,
+                        use_osm=True
+                    )
+                    sam_segments = labeler.label_segments(
+                        sam_segments,
+                        detection_dict,
+                        satellite_image  # Pass satellite_image for OSM fetching
+                    )
 
                     labeled_count = sum(1 for seg in sam_segments if seg.primary_label != 'unknown')
-                    logger.info(f"Labeled {len(sam_segments)} segments: {labeled_count} with semantic labels")
+                    logger.info(
+                        f"Labeled {len(sam_segments)} segments: "
+                        f"{labeled_count} with semantic labels"
+                    )
 
                 # Add SAM segments to GeoJSON
                 sam_features = [seg.to_geojson_feature() for seg in sam_segments]

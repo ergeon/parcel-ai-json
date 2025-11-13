@@ -194,28 +194,36 @@ class SAMSegmentLabeler:
     """Assigns semantic labels to SAM segments using multi-source fusion.
 
     Phase 1 implementation: Overlap-based labeling with existing detections
+    Phase 2 implementation: OSM buildings and roads integration
     """
 
     def __init__(
         self,
         overlap_threshold: float = 0.3,
-        containment_threshold: float = 0.7
+        containment_threshold: float = 0.7,
+        osm_overlap_threshold: float = 0.5,
+        use_osm: bool = True
     ):
         """Initialize SAM segment labeler.
 
         Args:
             overlap_threshold: IoU threshold for overlap-based labeling (default: 0.3)
             containment_threshold: Threshold for containment-based labeling
+            osm_overlap_threshold: IoU threshold for OSM feature overlap (default: 0.5)
+            use_osm: Whether to fetch and use OSM data (default: True)
         """
         self.overlap_threshold = overlap_threshold
         self.containment_threshold = containment_threshold
+        self.osm_overlap_threshold = osm_overlap_threshold
+        self.use_osm = use_osm
 
     def label_segments(
         self,
         sam_segments: List,
-        detections: Dict
+        detections: Dict,
+        satellite_image: Optional[Dict] = None
     ) -> List[LabeledSAMSegment]:
-        """Label SAM segments using detection overlap.
+        """Label SAM segments using detection overlap and OSM data.
 
         Args:
             sam_segments: List of SAMSegment objects
@@ -225,18 +233,33 @@ class SAMSegmentLabeler:
                 - 'trees': List of tree detections (DeepForest bboxes)
                 - 'tree_polygons': List of TreePolygon objects
                 - 'amenities': List of amenity detections
+            satellite_image: Optional dict with:
+                - center_lat: Center latitude
+                - center_lon: Center longitude
+                - image_width_px: Image width in pixels
+                - image_height_px: Image height in pixels
+                - zoom_level: Zoom level (default: 20)
 
         Returns:
             List of LabeledSAMSegment objects
         """
+        # Fetch OSM data if enabled and satellite_image provided
+        osm_data = None
+        if self.use_osm and satellite_image:
+            osm_data = self._fetch_osm_data(satellite_image)
+
         labeled_segments = []
 
         for segment in sam_segments:
-            # Try overlap-based labeling
+            # Try overlap-based labeling with existing detections
             label_result = self._label_by_overlap(segment, detections)
 
+            if not label_result and osm_data:
+                # Try OSM-based labeling (buildings, roads)
+                label_result = self._label_by_osm(segment, osm_data)
+
             if not label_result:
-                # If no overlap match, try containment
+                # Try containment-based labeling
                 label_result = self._label_by_containment(segment, detections)
 
             if not label_result:
@@ -269,6 +292,31 @@ class SAMSegmentLabeler:
             labeled_segments.append(labeled_segment)
 
         return labeled_segments
+
+    def _fetch_osm_data(self, satellite_image: Dict) -> Optional[Dict]:
+        """Fetch OSM buildings and roads for the image area.
+
+        Args:
+            satellite_image: Dict with image metadata
+
+        Returns:
+            Dict with 'buildings' and 'roads' lists, or None if fetch fails
+        """
+        try:
+            from parcel_ai_json.osm_data_fetcher import OSMDataFetcher
+
+            fetcher = OSMDataFetcher()
+            osm_data = fetcher.fetch_buildings_and_roads(
+                center_lat=satellite_image['center_lat'],
+                center_lon=satellite_image['center_lon'],
+                image_width_px=satellite_image.get('image_width_px', 640),
+                image_height_px=satellite_image.get('image_height_px', 640),
+                zoom_level=satellite_image.get('zoom_level', 20)
+            )
+            return osm_data
+        except Exception as e:
+            print(f"Warning: OSM data fetch failed: {e}")
+            return None
 
     def _label_by_overlap(
         self,
@@ -384,7 +432,8 @@ class SAMSegmentLabeler:
                 # Segment must be significantly larger to be driveway
                 # Calculate vehicle area using pyproj for accurate comparison
                 vehicle_area_sqm = self._calculate_polygon_area_sqm(vehicle_poly)
-                if segment.area_sqm and vehicle_area_sqm and segment.area_sqm > vehicle_area_sqm * 2:
+                if (segment.area_sqm and vehicle_area_sqm and
+                        segment.area_sqm > vehicle_area_sqm * 2):
                     return {
                         'label': 'driveway',
                         'confidence': 0.70,
@@ -494,3 +543,97 @@ class SAMSegmentLabeler:
             return abs(area)
         except Exception:
             return 0.0
+
+    def _label_by_osm(
+        self,
+        segment,
+        osm_data: Dict
+    ) -> Optional[Dict]:
+        """Label segment based on overlap with OSM features.
+
+        Args:
+            segment: SAMSegment object
+            osm_data: Dict with 'buildings' and 'roads' from OSMDataFetcher
+
+        Returns:
+            Dict with label info, or None if no match
+        """
+        from shapely.geometry import LineString
+
+        segment_poly = Polygon(segment.geo_polygon)
+        best_match = None
+        best_iou = 0.0
+
+        # Check OSM buildings first (higher priority)
+        for building in osm_data.get('buildings', []):
+            building_poly = building.to_shapely()
+            iou = self._calculate_iou(segment_poly, building_poly)
+
+            if iou > best_iou and iou >= self.osm_overlap_threshold:
+                best_iou = iou
+                best_match = {
+                    'label': 'building',
+                    'confidence': min(iou + 0.1, 1.0),  # Boost confidence for OSM data
+                    'source': 'osm',
+                    'subtype': building.building_type,
+                    'reason': f'osm_building_iou_{iou:.2f}',
+                    'related_ids': [f'osm_building_{building.osm_id}']
+                }
+
+        # Check OSM roads/driveways
+        for road in osm_data.get('roads', []):
+            # Create buffer around road linestring for overlap check
+            road_line = LineString(road.geo_linestring)
+
+            # Estimate buffer width based on highway type
+            buffer_widths = {
+                'residential': 8.0,  # ~8m
+                'service': 5.0,      # ~5m
+                'driveway': 3.0,     # ~3m
+                'footway': 1.5,      # ~1.5m
+                'path': 1.5,
+            }
+            # Use road width if available, otherwise estimate from highway type
+            if road.width_m:
+                buffer_m = road.width_m / 2
+            else:
+                buffer_m = buffer_widths.get(road.highway_type, 4.0) / 2
+
+            # Convert buffer meters to degrees (approximate at this latitude)
+            # 1 degree latitude ≈ 111km, adjust for longitude by latitude
+            import math
+            if segment_poly.centroid:
+                lat_rad = math.radians(segment_poly.centroid.y)
+                buffer_deg_lat = buffer_m / 111000
+                buffer_deg_lon = buffer_m / (111000 * math.cos(lat_rad))
+                buffer_deg = (buffer_deg_lat + buffer_deg_lon) / 2
+            else:
+                buffer_deg = buffer_m / 111000
+
+            road_poly = road_line.buffer(buffer_deg)
+            iou = self._calculate_iou(segment_poly, road_poly)
+
+            # Lower threshold for roads (they're linear features)
+            road_threshold = max(self.osm_overlap_threshold * 0.6, 0.2)
+
+            if iou > best_iou and iou >= road_threshold:
+                best_iou = iou
+
+                # Classify as driveway or pavement based on highway type
+                if road.highway_type in ['driveway', 'service']:
+                    label = 'driveway'
+                elif road.highway_type in ['footway', 'path', 'pedestrian']:
+                    label = 'pavement'
+                else:
+                    label = 'pavement'  # Default for other road types
+
+                best_match = {
+                    'label': label,
+                    'confidence': min(iou + 0.05, 0.85),  # Slightly lower confidence for roads
+                    'source': 'osm',
+                    'subtype': road.highway_type,
+                    'reason': f'osm_road_{road.highway_type}_iou_{iou:.2f}',
+                    'related_ids': [f'osm_road_{road.osm_id}']
+                }
+
+        return best_match if best_match else None

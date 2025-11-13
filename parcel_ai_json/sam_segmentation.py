@@ -360,9 +360,10 @@ class SAMSegmentationService:
         self,
         satellite_image: Dict,
         detections: Dict,
-        overlap_threshold: float = 0.5
+        overlap_threshold: float = 0.5,
+        use_osm: bool = True
     ) -> List:
-        """Run segmentation and label segments using detection overlap.
+        """Run segmentation and label segments using detection overlap and OSM data.
 
         Args:
             satellite_image: Dict with path, center_lat, center_lon, zoom_level
@@ -373,18 +374,40 @@ class SAMSegmentationService:
                 - 'tree_polygons': List of TreePolygon objects
                 - 'amenities': List of amenity detections
             overlap_threshold: IoU threshold for overlap labeling
+            use_osm: Whether to fetch and use OSM data (default: True)
 
         Returns:
             List of LabeledSAMSegment objects
         """
         from parcel_ai_json.sam_labeler import SAMSegmentLabeler
+        from PIL import Image
 
         # Run standard segmentation
         sam_segments = self.segment_image(satellite_image)
 
-        # Label segments
-        labeler = SAMSegmentLabeler(overlap_threshold=overlap_threshold)
-        labeled_segments = labeler.label_segments(sam_segments, detections)
+        # Get image dimensions for OSM fetcher
+        with Image.open(satellite_image["path"]) as img:
+            image_width_px, image_height_px = img.size
+
+        # Prepare satellite_image dict with image dimensions
+        sat_img_with_dims = {
+            'center_lat': satellite_image['center_lat'],
+            'center_lon': satellite_image['center_lon'],
+            'zoom_level': satellite_image.get('zoom_level', 20),
+            'image_width_px': image_width_px,
+            'image_height_px': image_height_px
+        }
+
+        # Label segments with OSM data
+        labeler = SAMSegmentLabeler(
+            overlap_threshold=overlap_threshold,
+            use_osm=use_osm
+        )
+        labeled_segments = labeler.label_segments(
+            sam_segments,
+            detections,
+            satellite_image=sat_img_with_dims
+        )
 
         print(
             f"Labeled {len(labeled_segments)} segments: "

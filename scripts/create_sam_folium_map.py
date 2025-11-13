@@ -1,15 +1,5 @@
 """
-⚠️  ARCHITECTURE VIOLATION WARNING ⚠️
-
-This script directly instantiates model services (PropertyDetectionService, SAMSegmentationService)
-which VIOLATES the Docker-first architecture mandated in CLAUDE.md.
-
-This script should be refactored to use the REST API at http://localhost:8000/detect instead.
-See scripts/generate_single_address_api.py for the correct implementation pattern.
-
-TODO: Refactor to eliminate direct service instantiation and use REST API exclusively.
-
----
+✅ ARCHITECTURE COMPLIANT - Uses REST API exclusively
 
 Create interactive folium map with SAM segments and semantic detections.
 
@@ -20,17 +10,70 @@ This script generates an enhanced folium map showing:
 - Swimming pools
 - Amenities (tennis courts, etc.)
 - Trees (DeepForest + detectree)
+
+All detection is performed via Docker container REST API at http://localhost:8000
 """
 
 import sys
 from pathlib import Path
+import requests
+from typing import Dict, Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.sam_segmentation import SAMSegmentationService  # noqa: E402
-from parcel_ai_json.sam_labeler import SAMSegmentLabeler  # noqa: E402
 import folium  # noqa: E402
+
+
+def ensure_docker_running() -> bool:
+    """Ensure Docker container is running."""
+    try:
+        response = requests.get("http://localhost:8000/health", timeout=2)
+        if response.status_code == 200:
+            print("✓ Docker container is running")
+            return True
+    except requests.exceptions.RequestException:
+        pass
+
+    print("❌ Docker container is not running!")
+    print("Start it with: docker-compose up -d")
+    return False
+
+
+def detect_via_api(
+    image_path: Path,
+    center_lat: float,
+    center_lon: float,
+    zoom_level: int = 20
+) -> Dict[str, Any]:
+    """Call REST API to detect features in satellite image.
+
+    Args:
+        image_path: Path to satellite image
+        center_lat: Center latitude
+        center_lon: Center longitude
+        zoom_level: Zoom level (default: 20)
+
+    Returns:
+        Detection results from API (GeoJSON format)
+    """
+    url = "http://localhost:8000/api/v1/detect"
+
+    with open(image_path, "rb") as f:
+        files = {"file": (image_path.name, f, "image/jpeg")}
+        data = {
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "zoom_level": zoom_level,
+            "include_trees": True,
+            "extract_tree_polygons": True,
+            "run_sam": True,
+            "label_sam_segments": True,
+        }
+
+        response = requests.post(url, files=files, data=data, timeout=300)
+        response.raise_for_status()
+        return response.json()
 
 
 def create_enhanced_folium_map(image_path: str, output_path: str):
@@ -54,88 +97,71 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         "ca": (36.7783, -119.4179),  # California center
         "nj": (40.0583, -74.4057),  # New Jersey
         "tx": (31.9686, -99.9018),  # Texas
+        "nc": (35.6301, -79.8064),  # North Carolina
     }
 
-    # Special case for Vacaville, CA (detected from city name)
+    # Special case for known cities
     if "vacaville" in image_path.stem.lower():
         center_lat, center_lon = 38.3566, -121.9877
+    elif "newton" in image_path.stem.lower():
+        center_lat, center_lon = 40.8998, -74.7524
+    elif "holly_springs" in image_path.stem.lower():
+        center_lat, center_lon = 35.6515, -78.8336
     else:
         center_lat, center_lon = state_centers.get(state_code.lower(), (37.0, -122.0))
-
-    satellite_image = {
-        "path": str(image_path),
-        "center_lat": center_lat,
-        "center_lon": center_lon,
-        "zoom_level": 20,
-    }
 
     print(f"Creating enhanced folium map for: {image_path.name}")
     print("=" * 80)
 
-    # Run SAM segmentation
-    print("1. Running SAM segmentation (ViT-H for highest accuracy)...")
-    sam_service = SAMSegmentationService(
-        model_type="vit_h",
-        device="cpu",
-        points_per_side=16,  # Faster inference
-        pred_iou_thresh=0.88,
-        stability_score_thresh=0.95,
-        min_mask_region_area=100,
-    )
-    sam_segments = sam_service.segment_image(satellite_image)
-    print(f"   ✓ Found {len(sam_segments)} SAM segments")
+    # Ensure Docker is running
+    if not ensure_docker_running():
+        raise RuntimeError("Docker container must be running. Start with: docker-compose up -d")
 
-    # Run semantic detections
-    print("2. Running semantic detections (vehicles, pools, amenities, trees)...")
-    from parcel_ai_json.vehicle_detector import VehicleDetectionService
-    from parcel_ai_json.swimming_pool_detector import SwimmingPoolDetectionService
-    from parcel_ai_json.amenity_detector import AmenityDetectionService
-    from parcel_ai_json.tree_detector import TreeDetectionService
-    from parcel_ai_json.property_detector import PropertyDetections
+    # Call REST API to get all detections
+    print("1. Calling REST API for detection...")
+    detections = detect_via_api(image_path, center_lat, center_lon, zoom_level=20)
 
-    # Run individual detections
-    vehicle_service = VehicleDetectionService(confidence_threshold=0.25)
-    pool_service = SwimmingPoolDetectionService(confidence_threshold=0.3)
-    amenity_service = AmenityDetectionService(confidence_threshold=0.3)
-    tree_service = TreeDetectionService(detectree_use_docker=False)  # Use native mode inside Docker
+    # Extract data from GeoJSON response
+    features = detections.get("features", [])
 
-    vehicles = vehicle_service.detect_vehicles(satellite_image)
-    pools = pool_service.detect_swimming_pools(satellite_image)
-    amenities = amenity_service.detect_amenities(satellite_image)
+    # Separate by type
+    sam_segments = []
+    vehicles = []
+    pools = []
+    amenities = []
+    trees_deepforest = []
+    trees_detectree = []
 
-    # Run tree detection with both DeepForest and detectree
-    print("   Running DeepForest + detectree tree detection...")
-    trees = tree_service.detect_trees(satellite_image)
+    for feature in features:
+        props = feature.get("properties", {})
+        detection_type = props.get("type", "unknown")
 
-    # Create detections object
-    detections = PropertyDetections(
-        vehicles=vehicles,
-        swimming_pools=pools,
-        amenities=amenities,
-        trees=trees,
-    )
-    print(f"   ✓ Found {len(detections.vehicles)} vehicles")
-    print(f"   ✓ Found {len(detections.swimming_pools)} pools")
-    print(f"   ✓ Found {len(detections.amenities)} amenities")
-    tree_count = detections.trees.tree_count if detections.trees else 0
-    polygon_count = (
-        len(detections.trees.tree_polygons)
-        if detections.trees and detections.trees.tree_polygons
-        else 0
-    )
-    print(f"   ✓ Found {tree_count} trees (DeepForest) + {polygon_count} tree polygons (detectree)")
+        if detection_type == "sam_segment":
+            sam_segments.append(feature)
+        elif detection_type == "vehicle":
+            vehicles.append(feature)
+        elif detection_type == "swimming_pool":
+            pools.append(feature)
+        elif detection_type == "amenity":
+            amenities.append(feature)
+        elif detection_type == "tree" and props.get("source") == "deepforest":
+            trees_deepforest.append(feature)
+        elif detection_type == "tree_polygon" and props.get("source") == "detectree":
+            trees_detectree.append(feature)
 
-    # Get image dimensions
+    print(f"   ✓ Received {len(sam_segments)} SAM segments")
+    print(f"   ✓ Received {len(vehicles)} vehicles")
+    print(f"   ✓ Received {len(pools)} pools")
+    print(f"   ✓ Received {len(amenities)} amenities")
+    print(f"   ✓ Received {len(trees_deepforest)} trees (DeepForest)")
+    print(f"   ✓ Received {len(trees_detectree)} tree polygons (detectree)")
+
+    # Get image dimensions for bounds calculation
     from PIL import Image
+    from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
     with Image.open(image_path) as img:
         img_width, img_height = img.size
-
-    center_lat = satellite_image["center_lat"]
-    center_lon = satellite_image["center_lon"]
-
-    # Use ImageCoordinateConverter for accurate bounds calculation
-    from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
     converter = ImageCoordinateConverter(
         center_lat=center_lat,
@@ -152,30 +178,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         [image_bounds_dict["north"], image_bounds_dict["east"]],
     ]
 
-    # Label SAM segments
-    print("3. Labeling SAM segments...")
-    labeler = SAMSegmentLabeler(overlap_threshold=0.3)
-    detection_dict = {
-        "vehicles": detections.vehicles or [],
-        "pools": detections.swimming_pools or [],
-        "amenities": detections.amenities or [],
-        "trees": detections.trees.trees if detections.trees else [],
-        "tree_polygons": (
-            detections.trees.tree_polygons
-            if detections.trees and detections.trees.tree_polygons
-            else []
-        ),
-    }
-    sam_segments = labeler.label_segments(sam_segments, detection_dict)
-    label_counts = {}
-    for seg in sam_segments:
-        label = seg.primary_label
-        label_counts[label] = label_counts.get(label, 0) + 1
-    print(f"   ✓ Labeled {len(sam_segments)} segments: {sum(1 for seg in sam_segments if seg.primary_label != 'unknown')} with semantic labels")
-    print(f"   Label distribution: {', '.join(f'{k}: {v}' for k, v in sorted(label_counts.items(), key=lambda x: x[1], reverse=True))}")
-
     # Create folium map
-    print("4. Creating folium map...")
+    print("2. Creating folium map...")
     m = folium.Map(
         location=[center_lat, center_lon],
         zoom_start=20,
@@ -193,35 +197,43 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     ).add_to(m)
 
     # Create feature groups for layer control
-    sam_group = folium.FeatureGroup(name=f"SAM Segments ({len(sam_segments)})", show=True)
-    vehicles_group = folium.FeatureGroup(name=f"Vehicles ({len(detections.vehicles)})", show=True)
+    sam_group = folium.FeatureGroup(
+        name=f"SAM Segments ({len(sam_segments)})", show=True
+    )
+    vehicles_group = folium.FeatureGroup(
+        name=f"Vehicles ({len(vehicles)})", show=True
+    )
     pools_group = folium.FeatureGroup(
-        name=f"Swimming Pools ({len(detections.swimming_pools)})", show=True
+        name=f"Swimming Pools ({len(pools)})", show=True
     )
     amenities_group = folium.FeatureGroup(
-        name=f"Amenities ({len(detections.amenities)})", show=True
+        name=f"Amenities ({len(amenities)})", show=True
     )
-    # Separate feature groups for DeepForest and detectree
-    deepforest_group = folium.FeatureGroup(name=f"Trees - DeepForest ({tree_count})", show=True)
+    deepforest_group = folium.FeatureGroup(
+        name=f"Trees - DeepForest ({len(trees_deepforest)})", show=True
+    )
     detectree_group = folium.FeatureGroup(
-        name=f"Tree Coverage - detectree ({polygon_count})", show=True
+        name=f"Tree Coverage - detectree ({len(trees_detectree)})", show=True
     )
 
-    # Add SAM segments with semi-transparent fill
-    print("5. Adding labeled SAM segments to map...")
-    for i, segment in enumerate(sam_segments):
-        # Use label-based colors from LABEL_SCHEMA
-        from parcel_ai_json.sam_labeler import LABEL_SCHEMA
-        label = segment.primary_label
-        color = LABEL_SCHEMA.get(label, LABEL_SCHEMA['unknown'])['color']
+    # Add SAM segments with semantic labels
+    print("3. Adding labeled SAM segments to map...")
+    from parcel_ai_json.sam_labeler import LABEL_SCHEMA
+
+    for segment in sam_segments:
+        props = segment["properties"]
+        coords = segment["geometry"]["coordinates"][0]  # Polygon coordinates
+
+        label = props.get("primary_label", "unknown")
+        color = LABEL_SCHEMA.get(label, LABEL_SCHEMA["unknown"])["color"]
 
         # Build label display
-        label_display = label.replace('_', ' ').title()
-        if segment.label_subtype:
-            label_display += f" ({segment.label_subtype})"
+        label_display = label.replace("_", " ").title()
+        if props.get("label_subtype"):
+            label_display += f" ({props['label_subtype']})"
 
         folium.Polygon(
-            locations=[(lat, lon) for lon, lat in segment.geo_polygon],
+            locations=[(lat, lon) for lon, lat in coords],
             color=color,
             weight=1,
             fill=True,
@@ -229,26 +241,24 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             fillOpacity=0.3,
             popup=folium.Popup(
                 f"<b>{label_display}</b><br>"
-                f"Confidence: {segment.label_confidence:.2f}<br>"
-                f"Source: {segment.label_source}<br>"
-                f"Area: {segment.area_sqm:.1f} m² ({segment.area_pixels} px)<br>"
-                f"Stability: {segment.stability_score:.3f}<br>"
-                f"Reason: {segment.labeling_reason or 'N/A'}",
+                f"Confidence: {props.get('label_confidence', 0):.2f}<br>"
+                f"Source: {props.get('label_source', 'N/A')}<br>"
+                f"Area: {props.get('area_sqm', 0):.1f} m² ({props.get('area_pixels', 0)} px)<br>"
+                f"Stability: {props.get('stability_score', 0):.3f}<br>"
+                f"Reason: {props.get('labeling_reason', 'N/A')}",
                 max_width=300,
             ),
             tooltip=label_display,
         ).add_to(sam_group)
 
-    # Add vehicles with purple markers
-    print("6. Adding vehicles to map...")
-    for i, vehicle in enumerate(detections.vehicles):
-        # Get center of polygon
-        lons, lats = zip(*vehicle.geo_polygon[:-1])  # Exclude closing point
-        center_lat = sum(lats) / len(lats)
-        center_lon = sum(lons) / len(lons)
+    # Add vehicles
+    print("4. Adding vehicles to map...")
+    for vehicle in vehicles:
+        props = vehicle["properties"]
+        coords = vehicle["geometry"]["coordinates"][0]
 
         folium.Polygon(
-            locations=[(lat, lon) for lon, lat in vehicle.geo_polygon],
+            locations=[(lat, lon) for lon, lat in coords],
             color="#800080",  # Purple
             weight=2,
             fill=True,
@@ -256,18 +266,21 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             fillOpacity=0.4,
             popup=folium.Popup(
                 f"<b>Vehicle</b><br>"
-                f"Class: {vehicle.class_name}<br>"
-                f"Confidence: {vehicle.confidence:.2f}",
+                f"Class: {props.get('class_name', 'vehicle')}<br>"
+                f"Confidence: {props.get('confidence', 0):.2f}",
                 max_width=200,
             ),
-            tooltip=f"Vehicle: {vehicle.class_name}",
+            tooltip=f"Vehicle: {props.get('class_name', 'vehicle')}",
         ).add_to(vehicles_group)
 
-    # Add swimming pools with blue markers
-    print("6. Adding swimming pools to map...")
-    for pool in detections.swimming_pools:
+    # Add swimming pools
+    print("5. Adding swimming pools to map...")
+    for pool in pools:
+        props = pool["properties"]
+        coords = pool["geometry"]["coordinates"][0]
+
         folium.Polygon(
-            locations=[(lat, lon) for lon, lat in pool.geo_polygon],
+            locations=[(lat, lon) for lon, lat in coords],
             color="#0066cc",  # Blue
             weight=2,
             fill=True,
@@ -275,18 +288,21 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             fillOpacity=0.5,
             popup=folium.Popup(
                 f"<b>Swimming Pool</b><br>"
-                f"Confidence: {pool.confidence:.2f}<br>"
-                f"Area: {pool.area_sqm:.1f} m²",
+                f"Confidence: {props.get('confidence', 0):.2f}<br>"
+                f"Area: {props.get('area_sqm', 0):.1f} m²",
                 max_width=200,
             ),
             tooltip="Swimming Pool",
         ).add_to(pools_group)
 
-    # Add amenities with orange markers
-    print("7. Adding amenities to map...")
-    for amenity in detections.amenities:
+    # Add amenities
+    print("6. Adding amenities to map...")
+    for amenity in amenities:
+        props = amenity["properties"]
+        coords = amenity["geometry"]["coordinates"][0]
+
         folium.Polygon(
-            locations=[(lat, lon) for lon, lat in amenity.geo_polygon],
+            locations=[(lat, lon) for lon, lat in coords],
             color="#ff8800",  # Orange
             weight=2,
             fill=True,
@@ -294,63 +310,55 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             fillOpacity=0.4,
             popup=folium.Popup(
                 f"<b>Amenity</b><br>"
-                f"Type: {amenity.amenity_type}<br>"
-                f"Confidence: {amenity.confidence:.2f}<br>"
-                f"Area: {amenity.area_sqm:.1f} m²",
+                f"Type: {props.get('amenity_type', 'unknown')}<br>"
+                f"Confidence: {props.get('confidence', 0):.2f}<br>"
+                f"Area: {props.get('area_sqm', 0):.1f} m²",
                 max_width=200,
             ),
-            tooltip=f"{amenity.amenity_type}",
+            tooltip=f"{props.get('amenity_type', 'Amenity')}",
         ).add_to(amenities_group)
 
-    # Add trees with green markers
-    print("8. Adding trees to map...")
+    # Add trees (DeepForest)
+    print("7. Adding trees to map...")
+    for i, tree in enumerate(trees_deepforest):
+        props = tree["properties"]
+        coords = tree["geometry"]["coordinates"][0]
 
-    # Add individual tree bounding boxes from DeepForest
-    if detections.trees and detections.trees.trees:
-        for i, tree_bbox in enumerate(detections.trees.trees):
-            # Convert geo_bbox to polygon coordinates
-            lon_min, lat_min, lon_max, lat_max = tree_bbox.geo_bbox
-            bbox_polygon = [
-                (lon_min, lat_min),
-                (lon_max, lat_min),
-                (lon_max, lat_max),
-                (lon_min, lat_max),
-                (lon_min, lat_min),
-            ]
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#228B22",  # Forest green
+            weight=2,
+            fill=True,
+            fillColor="#228B22",
+            fillOpacity=0.3,
+            popup=folium.Popup(
+                f"<b>Individual Tree (DeepForest)</b><br>"
+                f"Confidence: {props.get('confidence', 0):.2f}",
+                max_width=200,
+            ),
+            tooltip=f"Tree #{i+1}",
+        ).add_to(deepforest_group)
 
-            folium.Polygon(
-                locations=[(lat, lon) for lon, lat in bbox_polygon],
-                color="#228B22",  # Forest green
-                weight=2,
-                fill=True,
-                fillColor="#228B22",
-                fillOpacity=0.3,
-                popup=folium.Popup(
-                    f"<b>Individual Tree (DeepForest)</b><br>"
-                    f"Confidence: {tree_bbox.confidence:.2f}",
-                    max_width=200,
-                ),
-                tooltip=f"Tree #{i+1}",
-            ).add_to(deepforest_group)
+    # Add tree coverage (detectree)
+    for i, tree_poly in enumerate(trees_detectree):
+        props = tree_poly["properties"]
+        coords = tree_poly["geometry"]["coordinates"][0]
 
-    # Add tree coverage polygons from detectree
-    if detections.trees and detections.trees.tree_polygons:
-        for i, tree_poly in enumerate(detections.trees.tree_polygons):
-            folium.Polygon(
-                locations=[(lat, lon) for lon, lat in tree_poly.geo_polygon],
-                color="#006400",  # Dark green for coverage
-                weight=2,
-                fill=True,
-                fillColor="#006400",
-                fillOpacity=0.4,
-                popup=folium.Popup(
-                    f"<b>Tree Coverage (detectree)</b><br>"
-                    f"Area: {tree_poly.area_sqm:.1f} m²<br>"
-                    f"Pixels: {tree_poly.area_pixels}",
-                    max_width=200,
-                ),
-                tooltip=f"Tree Cluster #{i+1}",
-            ).add_to(detectree_group)
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#006400",  # Dark green
+            weight=2,
+            fill=True,
+            fillColor="#006400",
+            fillOpacity=0.4,
+            popup=folium.Popup(
+                f"<b>Tree Coverage (detectree)</b><br>"
+                f"Area: {props.get('area_sqm', 0):.1f} m²<br>"
+                f"Pixels: {props.get('area_pixels', 0)}",
+                max_width=200,
+            ),
+            tooltip=f"Tree Cluster #{i+1}",
+        ).add_to(detectree_group)
 
     # Add all groups to map
     sam_group.add_to(m)
@@ -373,14 +381,14 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
                 background-color: white; z-index:9999; font-size:14px;
                 border:2px solid grey; border-radius: 5px; padding: 10px">
     <p style="margin:0; font-weight: bold; text-align: center;">Legend</p>
-    <p style="margin:5px 0;"><span style="color:#3388ff;">●</span> SAM Small (&lt;500px)</p>
-    <p style="margin:5px 0;"><span style="color:#00ff00;">●</span> SAM Medium (500-2000px)</p>
-    <p style="margin:5px 0;"><span style="color:#ff0000;">●</span> SAM Large (&gt;2000px)</p>
     <p style="margin:5px 0;"><span style="color:#800080;">●</span> Vehicles</p>
     <p style="margin:5px 0;"><span style="color:#0066cc;">●</span> Swimming Pools</p>
     <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities</p>
     <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees (DeepForest)</p>
     <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Coverage (detectree)</p>
+    <p style="margin:5px 0;"><span style="color:#FF0000;">●</span> SAM: Vehicle</p>
+    <p style="margin:5px 0;"><span style="color:#87CEEB;">●</span> SAM: Driveway</p>
+    <p style="margin:5px 0;"><span style="color:#808080;">●</span> SAM: Unknown</p>
     </div>
     """
     m.get_root().html.add_child(folium.Element(legend_html))
@@ -405,11 +413,11 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"\n✓ Enhanced folium map saved to: {output_path}")
     print("\nSummary:")
     print(f"  - SAM segments: {len(sam_segments)}")
-    print(f"  - Vehicles: {len(detections.vehicles)}")
-    print(f"  - Swimming pools: {len(detections.swimming_pools)}")
-    print(f"  - Amenities: {len(detections.amenities)}")
-    print(f"  - Trees (DeepForest): {tree_count}")
-    print(f"  - Tree polygons (detectree): {polygon_count}")
+    print(f"  - Vehicles: {len(vehicles)}")
+    print(f"  - Swimming pools: {len(pools)}")
+    print(f"  - Amenities: {len(amenities)}")
+    print(f"  - Trees (DeepForest): {len(trees_deepforest)}")
+    print(f"  - Tree polygons (detectree): {len(trees_detectree)}")
     print("\nOpen the HTML file in your browser to explore!")
 
 
