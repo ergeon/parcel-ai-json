@@ -41,10 +41,7 @@ def ensure_docker_running() -> bool:
 
 
 def detect_via_api(
-    image_path: Path,
-    center_lat: float,
-    center_lon: float,
-    zoom_level: int = 20
+    image_path: Path, center_lat: float, center_lon: float, zoom_level: int = 20
 ) -> Dict[str, Any]:
     """Call REST API to detect features in satellite image.
 
@@ -115,7 +112,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
 
     # Ensure Docker is running
     if not ensure_docker_running():
-        raise RuntimeError("Docker container must be running. Start with: docker-compose up -d")
+        raise RuntimeError(
+            "Docker container must be running. Start with: docker-compose up -d"
+        )
 
     # Call REST API to get all detections
     print("1. Calling REST API for detection...")
@@ -200,12 +199,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     sam_group = folium.FeatureGroup(
         name=f"SAM Segments ({len(sam_segments)})", show=True
     )
-    vehicles_group = folium.FeatureGroup(
-        name=f"Vehicles ({len(vehicles)})", show=True
-    )
-    pools_group = folium.FeatureGroup(
-        name=f"Swimming Pools ({len(pools)})", show=True
-    )
+    vehicles_group = folium.FeatureGroup(name=f"Vehicles ({len(vehicles)})", show=True)
+    pools_group = folium.FeatureGroup(name=f"Swimming Pools ({len(pools)})", show=True)
     amenities_group = folium.FeatureGroup(
         name=f"Amenities ({len(amenities)})", show=True
     )
@@ -424,6 +419,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
 if __name__ == "__main__":
     # Use the same image we tested SAM on
     image_path = "output/examples/images/672_white_oak_ln_vacaville_ca_95687.jpg"
-    output_path = "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
+    output_path = (
+        "output/examples/folium_maps/672_white_oak_ln_vacaville_ca_95687_with_sam.html"
+    )
 
     create_enhanced_folium_map(image_path, output_path)

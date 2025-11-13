@@ -145,7 +145,11 @@ def generate_folium_map(
         with open(satellite_image_path, "rb") as f:
             img_data = f.read()
 
-        img_format = "jpeg" if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"] else "png"
+        img_format = (
+            "jpeg"
+            if satellite_image_path.suffix.lower() in [".jpg", ".jpeg"]
+            else "png"
+        )
         img_base64 = base64.b64encode(img_data).decode()
         img_url = f"data:image/{img_format};base64,{img_base64}"
 
@@ -203,7 +207,9 @@ def generate_folium_map(
                 "unknown": ("#CCCCCC", "#999999", "❓"),
             }
 
-            fill_color, line_color, icon = label_colors.get(primary_label, label_colors["unknown"])
+            fill_color, line_color, icon = label_colors.get(
+                primary_label, label_colors["unknown"]
+            )
 
             popup_html = f"""
             <b>SAM Segment #{segment_id}</b><br>
@@ -396,15 +402,35 @@ def generate_examples(num_examples=3):
             api_result = detect_via_api(img_path, lat, lon, zoom_level=20)
 
             # Extract GeoJSON
-            geojson_data = api_result.get("geojson", {"type": "FeatureCollection", "features": []})
+            geojson_data = api_result.get(
+                "geojson", {"type": "FeatureCollection", "features": []}
+            )
 
             # Count detections
-            vehicles = sum(1 for f in geojson_data["features"] if f["properties"].get("feature_type") == "vehicle")
-            pools = sum(1 for f in geojson_data["features"] if f["properties"].get("feature_type") == "swimming_pool")
-            amenities = sum(1 for f in geojson_data["features"] if f["properties"].get("feature_type") == "amenity")
-            sam_segments = sum(1 for f in geojson_data["features"] if f["properties"].get("feature_type") == "labeled_sam_segment")
+            vehicles = sum(
+                1
+                for f in geojson_data["features"]
+                if f["properties"].get("feature_type") == "vehicle"
+            )
+            pools = sum(
+                1
+                for f in geojson_data["features"]
+                if f["properties"].get("feature_type") == "swimming_pool"
+            )
+            amenities = sum(
+                1
+                for f in geojson_data["features"]
+                if f["properties"].get("feature_type") == "amenity"
+            )
+            sam_segments = sum(
+                1
+                for f in geojson_data["features"]
+                if f["properties"].get("feature_type") == "labeled_sam_segment"
+            )
 
-            print(f"  ✓ Detected: {vehicles} vehicles, {pools} pools, {amenities} amenities, {sam_segments} SAM segments")
+            print(
+                f"  ✓ Detected: {vehicles} vehicles, {pools} pools, {amenities} amenities, {sam_segments} SAM segments"
+            )
 
             # Save GeoJSON
             geojson_dir = output_dir / "geojson"
@@ -435,21 +461,24 @@ def generate_examples(num_examples=3):
             )
             print(f"  ✓ Folium map saved to: folium_maps/{img_path.stem}.html")
 
-            results.append({
-                "image": img_name,
-                "vehicles_detected": vehicles,
-                "pools_detected": pools,
-                "amenities_detected": amenities,
-                "sam_segments": sam_segments,
-                "output_file": output_filename,
-                "coordinates": {"lat": lat, "lon": lon},
-            })
+            results.append(
+                {
+                    "image": img_name,
+                    "vehicles_detected": vehicles,
+                    "pools_detected": pools,
+                    "amenities_detected": amenities,
+                    "sam_segments": sam_segments,
+                    "output_file": output_filename,
+                    "coordinates": {"lat": lat, "lon": lon},
+                }
+            )
 
             processed += 1
 
         except Exception as e:
             print(f"  ✗ Error: {e}")
             import traceback
+
             traceback.print_exc()
             skipped += 1
             continue
@@ -468,11 +497,15 @@ def generate_examples(num_examples=3):
     # Save summary
     summary_path = output_dir / "summary.json"
     with open(summary_path, "w") as f:
-        json.dump({
-            "total_processed": processed,
-            "total_skipped": skipped,
-            "results": results,
-        }, f, indent=2)
+        json.dump(
+            {
+                "total_processed": processed,
+                "total_skipped": skipped,
+                "results": results,
+            },
+            f,
+            indent=2,
+        )
 
     print(f"\n✓ Summary saved to: {summary_path}")
 
@@ -500,7 +533,7 @@ if __name__ == "__main__":
         "--num-examples",
         type=int,
         default=3,
-        help="Number of examples to generate (default: 3)"
+        help="Number of examples to generate (default: 3)",
     )
     args = parser.parse_args()
     generate_examples(num_examples=args.num_examples)

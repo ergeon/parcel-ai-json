@@ -19,18 +19,14 @@ import folium
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.coordinate_converter import (  # noqa: E402
-    ImageCoordinateConverter
-)
+from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 
-def fetch_google_satellite_image(
-    lat, lon, zoom, output_path, width=640, height=640
-):
+def fetch_google_satellite_image(lat, lon, zoom, output_path, width=640, height=640):
     """Fetch satellite image from Google Maps Static API."""
     if not GOOGLE_MAPS_API_KEY:
         raise ValueError("GOOGLE_MAPS_API_KEY environment variable not set")
@@ -48,7 +44,7 @@ def fetch_google_satellite_image(
     response = requests.get(url)
     response.raise_for_status()
 
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         f.write(response.content)
 
     return output_path
@@ -70,7 +66,7 @@ def detect_via_api(image_path, lat, lon, zoom=20):
     # Call detection endpoint
     detect_url = f"{API_BASE_URL}/detect"
 
-    with open(image_path, 'rb') as f:
+    with open(image_path, "rb") as f:
         files = {"image": ("image.jpg", f, "image/jpeg")}
         data = {
             "center_lat": lat,
@@ -78,22 +74,18 @@ def detect_via_api(image_path, lat, lon, zoom=20):
             "zoom_level": zoom,
             "format": "geojson",
             "include_sam": "true",  # Include SAM segmentation
-            "sam_points_per_side": 32
+            "sam_points_per_side": 32,
         }
 
         print(f"  Calling API: {detect_url}")
         print(f"  (This may take 5-10 minutes for first request with SAM...)")
-        response = requests.post(
-            detect_url, files=files, data=data, timeout=600
-        )
+        response = requests.post(detect_url, files=files, data=data, timeout=600)
         response.raise_for_status()
 
     return response.json()
 
 
-def create_folium_map(
-    image_path, geojson_data, center_lat, center_lon, output_path
-):
+def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_path):
     """Generate interactive Folium map."""
     # Get image dimensions
     with Image.open(image_path) as img:
@@ -159,7 +151,7 @@ def create_folium_map(
         props = feature["properties"]
 
         if feature_type == "vehicle":
-            area = props.get('area_sqm', 0)
+            area = props.get("area_sqm", 0)
             popup_html = f"<b>Vehicle</b><br>Area: {area:.1f} m²"
             folium.Polygon(
                 locations=coords_swapped,
@@ -172,7 +164,7 @@ def create_folium_map(
             ).add_to(vehicle_group)
 
         elif feature_type == "swimming_pool":
-            area = props.get('area_sqm', 0)
+            area = props.get("area_sqm", 0)
             popup_html = f"<b>Pool</b><br>Area: {area:.1f} m²"
             folium.Polygon(
                 locations=coords_swapped,
@@ -185,8 +177,8 @@ def create_folium_map(
             ).add_to(pool_group)
 
         elif feature_type == "amenity":
-            class_name = props.get('class_name', 'Amenity')
-            area = props.get('area_sqm', 0)
+            class_name = props.get("class_name", "Amenity")
+            area = props.get("area_sqm", 0)
             popup_html = f"<b>{class_name}</b><br>Area: {area:.1f} m²"
             folium.Polygon(
                 locations=coords_swapped,
@@ -199,7 +191,7 @@ def create_folium_map(
             ).add_to(amenity_group)
 
         elif feature_type == "tree_cluster":
-            area = props.get('area_sqm', 0)
+            area = props.get("area_sqm", 0)
             popup_html = f"<b>Tree</b><br>Area: {area:.1f} m²"
             folium.Polygon(
                 locations=coords_swapped,
@@ -212,11 +204,11 @@ def create_folium_map(
             ).add_to(tree_group)
 
         elif feature_type == "labeled_sam_segment":
-            label = props.get('primary_label', 'unknown')
-            segment_id = props.get('segment_id', 'N/A')
-            confidence = props.get('label_confidence', 0.0)
-            color = props.get('color', '#4A90E2')
-            area = props.get('area_sqm', 0)
+            label = props.get("primary_label", "unknown")
+            segment_id = props.get("segment_id", "N/A")
+            confidence = props.get("label_confidence", 0.0)
+            color = props.get("color", "#4A90E2")
+            area = props.get("area_sqm", 0)
 
             popup_html = (
                 f"<b>SAM Segment #{segment_id}</b><br>"
@@ -282,15 +274,18 @@ def generate_for_address(address, lat, lon, zoom=20):
     try:
         geojson = detect_via_api(image_path, lat, lon, zoom)
         vehicle_count = sum(
-            1 for f in geojson.get("features", [])
+            1
+            for f in geojson.get("features", [])
             if f["properties"].get("feature_type") == "vehicle"
         )
         pool_count = sum(
-            1 for f in geojson.get("features", [])
+            1
+            for f in geojson.get("features", [])
             if f["properties"].get("feature_type") == "swimming_pool"
         )
         amenity_count = sum(
-            1 for f in geojson.get("features", [])
+            1
+            for f in geojson.get("features", [])
             if f["properties"].get("feature_type") == "amenity"
         )
 
@@ -301,6 +296,7 @@ def generate_for_address(address, lat, lon, zoom=20):
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
@@ -308,7 +304,7 @@ def generate_for_address(address, lat, lon, zoom=20):
     print("\nStep 3: Saving GeoJSON...")
     geojson_path = geojson_dir / f"{filename}.geojson"
 
-    with open(geojson_path, 'w') as f:
+    with open(geojson_path, "w") as f:
         json.dump(geojson, f, indent=2)
 
     print(f"✓ GeoJSON saved to: {geojson_path}")
@@ -323,6 +319,7 @@ def generate_for_address(address, lat, lon, zoom=20):
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
@@ -344,32 +341,20 @@ if __name__ == "__main__":
         "--address",
         type=str,
         default="2218 San Antonio St, Grand Prairie, TX 75051",
-        help="Full address string"
+        help="Full address string",
     )
     parser.add_argument(
-        "--lat",
-        type=float,
-        default=32.7459,
-        help="Latitude of address center"
+        "--lat", type=float, default=32.7459, help="Latitude of address center"
     )
     parser.add_argument(
-        "--lon",
-        type=float,
-        default=-96.9978,
-        help="Longitude of address center"
+        "--lon", type=float, default=-96.9978, help="Longitude of address center"
     )
     parser.add_argument(
-        "--zoom",
-        type=int,
-        default=20,
-        help="Google Maps zoom level (default: 20)"
+        "--zoom", type=int, default=20, help="Google Maps zoom level (default: 20)"
     )
 
     args = parser.parse_args()
 
     generate_for_address(
-        address=args.address,
-        lat=args.lat,
-        lon=args.lon,
-        zoom=args.zoom
+        address=args.address, lat=args.lat, lon=args.lon, zoom=args.zoom
     )

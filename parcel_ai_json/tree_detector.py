@@ -192,7 +192,8 @@ class DeepForestService:
             from deepforest import main
         except ImportError:
             raise ImportError(
-                "Tree detection requires deepforest. " "Install with: pip install deepforest"
+                "Tree detection requires deepforest. "
+                "Install with: pip install deepforest"
             )
 
         # Initialize and load pretrained model
@@ -369,7 +370,8 @@ class DetectreeService:
             import detectree as dtr
         except ImportError:
             raise ImportError(
-                "Tree detection requires detectree. " "Install with: pip install detectree"
+                "Tree detection requires detectree. "
+                "Install with: pip install detectree"
             )
 
         self._clf = dtr.Classifier()
@@ -422,7 +424,9 @@ class DetectreeService:
         mask_processed = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, closing_kernel)
 
         # Find external contours only
-        contours, _ = cv2.findContours(mask_processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(
+            mask_processed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
 
         tree_polygons = []
 
@@ -647,7 +651,9 @@ print(json.dumps(result))
         except subprocess.TimeoutExpired:
             raise RuntimeError("Tree detection timed out after 60 seconds")
         except FileNotFoundError:
-            raise RuntimeError("Docker not found. Please install Docker to use tree detection.")
+            raise RuntimeError(
+                "Docker not found. Please install Docker to use tree detection."
+            )
         except Exception as e:
             raise RuntimeError(f"detectree tree detection failed: {e}")
 
@@ -763,8 +769,8 @@ class CombinedTreeDetectionService:
         # Run detectree detection
         if self.use_detectree:
             try:
-                detectree_stats, tree_mask_path, tree_polygons = self.detectree.detect_trees(
-                    satellite_image
+                detectree_stats, tree_mask_path, tree_polygons = (
+                    self.detectree.detect_trees(satellite_image)
                 )
                 tree_pixel_count = detectree_stats["tree_pixel_count"]
                 total_pixels = detectree_stats["total_pixels"]

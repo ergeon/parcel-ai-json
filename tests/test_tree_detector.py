@@ -303,9 +303,7 @@ class TestTreeDetectionService(unittest.TestCase):
         mock_rgb_img = Mock()
         mock_img.convert.return_value = mock_rgb_img
         # Create realistic RGB image data
-        rgb_array = np.random.randint(
-            0, 255, (100, 100, 3), dtype=np.uint8
-        )
+        rgb_array = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
         mock_rgb_img.__array__ = lambda: rgb_array
         mock_image_open.return_value = mock_img
 
@@ -362,9 +360,7 @@ class TestTreeDetectionService(unittest.TestCase):
         mock_rgb_img = Mock()
         mock_img.convert.return_value = mock_rgb_img
         # Create realistic RGB image data
-        rgb_array = np.random.randint(
-            0, 255, (100, 100, 3), dtype=np.uint8
-        )
+        rgb_array = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
         mock_rgb_img.__array__ = lambda: rgb_array
         mock_image_open.return_value = mock_img
 

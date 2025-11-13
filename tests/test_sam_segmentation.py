@@ -99,9 +99,7 @@ class TestSAMSegment(unittest.TestCase):
         self.assertEqual(geojson["type"], "Feature")
         self.assertEqual(geojson["geometry"]["type"], "Polygon")
         self.assertEqual(geojson["geometry"]["coordinates"], [geo_polygon])
-        self.assertEqual(
-            geojson["properties"]["feature_type"], "sam_segment"
-        )
+        self.assertEqual(geojson["properties"]["feature_type"], "sam_segment")
         self.assertEqual(geojson["properties"]["segment_id"], 2)
         self.assertEqual(geojson["properties"]["area_pixels"], 900)
         self.assertEqual(geojson["properties"]["area_sqm"], 75.5)
@@ -162,9 +160,12 @@ class TestSAMSegmentationService(unittest.TestCase):
         # Mock the models directory to exist but not have the checkpoint
         with patch("pathlib.Path.exists", return_value=False):
             # Mock segment_anything import
-            with patch.dict("sys.modules", {
-                "segment_anything": Mock(),
-            }):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "segment_anything": Mock(),
+                },
+            ):
                 with self.assertRaises(ValueError) as context:
                     service._load_model()
 
@@ -227,12 +228,14 @@ class TestSAMSegmentationService(unittest.TestCase):
         mask[10:30, 10:30] = 1
 
         # Mock contour detection
-        mock_contour = np.array([
-            [[10, 10]],
-            [[30, 10]],
-            [[30, 30]],
-            [[10, 30]],
-        ])
+        mock_contour = np.array(
+            [
+                [[10, 10]],
+                [[30, 10]],
+                [[30, 30]],
+                [[10, 30]],
+            ]
+        )
         mock_find_contours.return_value = ([mock_contour], None)
         mock_contour_area.return_value = 400
         mock_arc_length.return_value = 80
@@ -289,9 +292,7 @@ class TestSAMSegmentationService(unittest.TestCase):
 
     @patch("PIL.Image.open")
     @patch.object(SAMSegmentationService, "_load_model")
-    def test_segment_image_file_not_found(
-        self, mock_load_model, mock_image_open
-    ):
+    def test_segment_image_file_not_found(self, mock_load_model, mock_image_open):
         """Test segmentation with non-existent image file."""
         service = SAMSegmentationService()
 
@@ -335,9 +336,7 @@ class TestSAMSegmentationService(unittest.TestCase):
         service._mask_generator.generate.return_value = [mock_mask_dict]
 
         # Mock coordinate converter and polygon extraction
-        with patch.object(
-            service, "_mask_to_geo_polygon"
-        ) as mock_mask_to_poly:
+        with patch.object(service, "_mask_to_geo_polygon") as mock_mask_to_poly:
             mock_mask_to_poly.return_value = [
                 (-122.4194, 37.7749),
                 (-122.4193, 37.7749),
@@ -345,12 +344,8 @@ class TestSAMSegmentationService(unittest.TestCase):
                 (-122.4194, 37.7749),
             ]
 
-            with patch.object(
-                service, "_calculate_area_sqm", return_value=50.5
-            ):
-                with tempfile.NamedTemporaryFile(
-                    suffix=".jpg", delete=False
-                ) as tmp:
+            with patch.object(service, "_calculate_area_sqm", return_value=50.5):
+                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     tmp_path = Path(tmp.name)
 
                 try:
@@ -361,9 +356,7 @@ class TestSAMSegmentationService(unittest.TestCase):
                         "zoom_level": 20,
                     }
 
-                    geojson = service.segment_image_geojson(
-                        satellite_image
-                    )
+                    geojson = service.segment_image_geojson(satellite_image)
 
                     self.assertEqual(geojson["type"], "FeatureCollection")
                     self.assertIn("features", geojson)

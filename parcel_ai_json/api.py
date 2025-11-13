@@ -37,7 +37,9 @@ def get_detector() -> PropertyDetectionService:
     if _detector is None:
         # Auto-detect best device (cuda/mps/cpu)
         device = get_best_device()
-        logger.info(f"Initializing PropertyDetectionService with DeepForest (device: {device})...")
+        logger.info(
+            f"Initializing PropertyDetectionService with DeepForest (device: {device})..."
+        )
 
         # Create property detector with parallel DeepForest + detectree tree detection
         _detector = PropertyDetectionService(
@@ -104,11 +106,14 @@ async def detect_property(
     center_lon: float = Form(..., description="Image center longitude (WGS84)"),
     zoom_level: int = Form(20, description="Zoom level (default: 20)"),
     format: str = Form("geojson", description="Output format: 'geojson' or 'summary'"),
-    include_sam: bool = Form(False, description="Include SAM segmentation (default: False)"),
-    sam_points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
+    include_sam: bool = Form(
+        False, description="Include SAM segmentation (default: False)"
+    ),
+    sam_points_per_side: int = Form(
+        32, description="SAM grid sampling density (default: 32)"
+    ),
     label_sam_segments: bool = Form(
-        True,
-        description="Label SAM segments with semantic labels (default: True)"
+        True, description="Label SAM segments with semantic labels (default: True)"
     ),
 ):
     """Detect all property features in satellite image.
@@ -136,16 +141,22 @@ async def detect_property(
         raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
 
     if not -90 <= center_lat <= 90:
-        raise HTTPException(status_code=400, detail="Latitude must be between -90 and 90")
+        raise HTTPException(
+            status_code=400, detail="Latitude must be between -90 and 90"
+        )
 
     if not -180 <= center_lon <= 180:
-        raise HTTPException(status_code=400, detail="Longitude must be between -180 and 180")
+        raise HTTPException(
+            status_code=400, detail="Longitude must be between -180 and 180"
+        )
 
     if not 1 <= zoom_level <= 22:
         raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
 
     if format not in ["geojson", "summary"]:
-        raise HTTPException(status_code=400, detail="Format must be 'geojson' or 'summary'")
+        raise HTTPException(
+            status_code=400, detail="Format must be 'geojson' or 'summary'"
+        )
 
     if include_sam and not 8 <= sam_points_per_side <= 64:
         raise HTTPException(
@@ -197,7 +208,9 @@ async def detect_property(
                 logger.info("Running SAM segmentation...")
                 sam_service = get_sam_service()
                 if sam_points_per_side != sam_service.points_per_side:
-                    logger.info(f"Updating SAM points_per_side to {sam_points_per_side}")
+                    logger.info(
+                        f"Updating SAM points_per_side to {sam_points_per_side}"
+                    )
                     sam_service.points_per_side = sam_points_per_side
 
                 sam_segments = sam_service.segment_image(satellite_image)
@@ -225,17 +238,17 @@ async def detect_property(
 
                     # Label segments (with OSM buildings support)
                     labeler = SAMSegmentLabeler(
-                        overlap_threshold=0.3,
-                        osm_overlap_threshold=0.5,
-                        use_osm=True
+                        overlap_threshold=0.3, osm_overlap_threshold=0.5, use_osm=True
                     )
                     sam_segments = labeler.label_segments(
                         sam_segments,
                         detection_dict,
-                        satellite_image  # Pass satellite_image for OSM fetching
+                        satellite_image,  # Pass satellite_image for OSM fetching
                     )
 
-                    labeled_count = sum(1 for seg in sam_segments if seg.primary_label != 'unknown')
+                    labeled_count = sum(
+                        1 for seg in sam_segments if seg.primary_label != "unknown"
+                    )
                     logger.info(
                         f"Labeled {len(sam_segments)} segments: "
                         f"{labeled_count} with semantic labels"
@@ -245,9 +258,13 @@ async def detect_property(
                 sam_features = [seg.to_geojson_feature() for seg in sam_segments]
                 geojson["features"].extend(sam_features)
 
-                logger.info(f"SAM segmentation complete: {len(sam_segments)} segments added")
+                logger.info(
+                    f"SAM segmentation complete: {len(sam_segments)} segments added"
+                )
 
-            logger.info(f"Detection complete: {len(geojson['features'])} total features")
+            logger.info(
+                f"Detection complete: {len(geojson['features'])} total features"
+            )
             return JSONResponse(content=geojson)
 
     except Exception as e:
@@ -297,7 +314,9 @@ async def detect_vehicles(
 
     except Exception as e:
         logger.error(f"Vehicle detection failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Vehicle detection failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Vehicle detection failed: {str(e)}"
+        )
 
     finally:
         if temp_dir and temp_dir.exists():
@@ -385,7 +404,9 @@ async def detect_amenities(
 
     except Exception as e:
         logger.error(f"Amenity detection failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Amenity detection failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Amenity detection failed: {str(e)}"
+        )
 
     finally:
         if temp_dir and temp_dir.exists():
@@ -440,7 +461,9 @@ async def segment_sam(
     center_lat: float = Form(..., description="Image center latitude (WGS84)"),
     center_lon: float = Form(..., description="Image center longitude (WGS84)"),
     zoom_level: int = Form(20, description="Zoom level (default: 20)"),
-    points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
+    points_per_side: int = Form(
+        32, description="SAM grid sampling density (default: 32)"
+    ),
 ):
     """Run SAM segmentation on satellite image.
 
@@ -464,10 +487,14 @@ async def segment_sam(
         raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
 
     if not -90 <= center_lat <= 90:
-        raise HTTPException(status_code=400, detail="Latitude must be between -90 and 90")
+        raise HTTPException(
+            status_code=400, detail="Latitude must be between -90 and 90"
+        )
 
     if not -180 <= center_lon <= 180:
-        raise HTTPException(status_code=400, detail="Longitude must be between -180 and 180")
+        raise HTTPException(
+            status_code=400, detail="Longitude must be between -180 and 180"
+        )
 
     if not 1 <= zoom_level <= 22:
         raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
@@ -516,7 +543,9 @@ async def segment_sam(
 
     except Exception as e:
         logger.error(f"SAM segmentation failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"SAM segmentation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"SAM segmentation failed: {str(e)}"
+        )
 
     finally:
         # Clean up temporary files

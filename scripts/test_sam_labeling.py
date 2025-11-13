@@ -11,12 +11,8 @@ from collections import Counter
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.sam_segmentation import (  # noqa: E402
-    SAMSegmentationService
-)
-from parcel_ai_json.property_detector import (  # noqa: E402
-    PropertyDetectionService
-)
+from parcel_ai_json.sam_segmentation import SAMSegmentationService  # noqa: E402
+from parcel_ai_json.property_detector import PropertyDetectionService  # noqa: E402
 from parcel_ai_json.sam_labeler import LABEL_SCHEMA  # noqa: E402
 
 
@@ -57,7 +53,7 @@ def test_sam_labeling():
         center_lon=-122.4194,
         zoom_level=20,
         include_trees=True,
-        extract_tree_polygons=True
+        extract_tree_polygons=True,
     )
 
     print(f"✓ Detected {len(detections_result.vehicles)} vehicles")
@@ -85,8 +81,7 @@ def test_sam_labeling():
         print(f"ERROR: {e}")
         print("\nPlease download the SAM model checkpoint:")
         sam_url = (
-            "https://dl.fbaipublicfiles.com/"
-            "segment_anything/sam_vit_b_01ec64.pth"
+            "https://dl.fbaipublicfiles.com/" "segment_anything/sam_vit_b_01ec64.pth"
         )
         print(f"cd models && curl -L -o sam_vit_b_01ec64.pth {sam_url}")
         return
@@ -102,17 +97,18 @@ def test_sam_labeling():
         labeled_segments = sam_service.segment_image_labeled(
             satellite_image,
             {
-                'vehicles': detections_result.vehicles,
-                'pools': detections_result.pools,
-                'amenities': detections_result.amenities,
-                'trees': detections_result.trees or [],
-                'tree_polygons': detections_result.tree_polygons or []
+                "vehicles": detections_result.vehicles,
+                "pools": detections_result.pools,
+                "amenities": detections_result.amenities,
+                "trees": detections_result.trees or [],
+                "tree_polygons": detections_result.tree_polygons or [],
             },
-            overlap_threshold=0.5
+            overlap_threshold=0.5,
         )
     except Exception as e:
         print(f"ERROR during segmentation: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
@@ -125,18 +121,21 @@ def test_sam_labeling():
     # Count labels
     label_counts = Counter(s.primary_label for s in labeled_segments)
     labeled_count = sum(
-        count for label, count in label_counts.items()
-        if label != 'unknown'
+        count for label, count in label_counts.items() if label != "unknown"
     )
-    unknown_count = label_counts.get('unknown', 0)
+    unknown_count = label_counts.get("unknown", 0)
 
-    print(f"\nLabeled segments: {labeled_count} ({labeled_count / len(labeled_segments) * 100:.1f}%)")  # noqa: E501
-    print(f"Unknown segments: {unknown_count} ({unknown_count / len(labeled_segments) * 100:.1f}%)")  # noqa: E501
+    print(
+        f"\nLabeled segments: {labeled_count} ({labeled_count / len(labeled_segments) * 100:.1f}%)"
+    )  # noqa: E501
+    print(
+        f"Unknown segments: {unknown_count} ({unknown_count / len(labeled_segments) * 100:.1f}%)"
+    )  # noqa: E501
 
     print("\nLabel distribution:")
     for label, count in label_counts.most_common():
         pct = count / len(labeled_segments) * 100
-        color = LABEL_SCHEMA.get(label, LABEL_SCHEMA['unknown'])['color']
+        color = LABEL_SCHEMA.get(label, LABEL_SCHEMA["unknown"])["color"]
         print(f"  {label:20} {count:4} ({pct:5.1f}%)  {color}")
 
     # Show examples of each label type
@@ -158,13 +157,15 @@ def test_sam_labeling():
     output_dir = Path("output/examples/sam")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    geojson_path = output_dir / f"{sample_image_path.stem}_labeled_segments.geojson"  # noqa: E501
+    geojson_path = (
+        output_dir / f"{sample_image_path.stem}_labeled_segments.geojson"
+    )  # noqa: E501
     geojson = {
-        'type': 'FeatureCollection',
-        'features': [seg.to_geojson_feature() for seg in labeled_segments]
+        "type": "FeatureCollection",
+        "features": [seg.to_geojson_feature() for seg in labeled_segments],
     }
 
-    with open(geojson_path, 'w') as f:
+    with open(geojson_path, "w") as f:
         json.dump(geojson, f, indent=2)
 
     print(f"\n✓ Labeled GeoJSON saved to: {geojson_path}")
@@ -172,13 +173,8 @@ def test_sam_labeling():
     # Statistics by confidence level
     print("\nLabeling confidence distribution:")
     high_conf = sum(1 for s in labeled_segments if s.label_confidence >= 0.75)
-    med_conf = sum(
-        1 for s in labeled_segments
-        if 0.55 <= s.label_confidence < 0.75
-    )
-    low_conf = sum(
-        1 for s in labeled_segments if 0 < s.label_confidence < 0.55
-    )
+    med_conf = sum(1 for s in labeled_segments if 0.55 <= s.label_confidence < 0.75)
+    low_conf = sum(1 for s in labeled_segments if 0 < s.label_confidence < 0.55)
     no_conf = sum(1 for s in labeled_segments if s.label_confidence == 0)
 
     print(f"  High confidence (≥0.75): {high_conf}")

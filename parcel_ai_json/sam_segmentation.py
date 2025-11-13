@@ -131,13 +131,16 @@ class SAMSegmentationService:
             checkpoint_file = checkpoint_files.get(self.model_type)
             if not checkpoint_file:
                 raise ValueError(
-                    f"Invalid model_type: {self.model_type}. " "Must be one of: vit_b, vit_l, vit_h"
+                    f"Invalid model_type: {self.model_type}. "
+                    "Must be one of: vit_b, vit_l, vit_h"
                 )
 
             checkpoint_path = models_dir / checkpoint_file
 
             if not checkpoint_path.exists():
-                download_url = f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
+                download_url = (
+                    f"https://dl.fbaipublicfiles.com/segment_anything/{checkpoint_file}"
+                )
                 raise FileNotFoundError(
                     f"Model checkpoint not found: {checkpoint_path}\n"
                     f"Download from: {download_url}"
@@ -149,7 +152,9 @@ class SAMSegmentationService:
         # SAM doesn't support float64 on MPS, force CPU if MPS is requested
         actual_device = self.device
         if self.device == "mps":
-            print("Warning: SAM doesn't support MPS (Apple Silicon GPU) - using CPU instead")
+            print(
+                "Warning: SAM doesn't support MPS (Apple Silicon GPU) - using CPU instead"
+            )
             actual_device = "cpu"
 
         self._sam.to(device=actual_device)
@@ -361,7 +366,7 @@ class SAMSegmentationService:
         satellite_image: Dict,
         detections: Dict,
         overlap_threshold: float = 0.5,
-        use_osm: bool = True
+        use_osm: bool = True,
     ) -> List:
         """Run segmentation and label segments using detection overlap and OSM data.
 
@@ -391,22 +396,19 @@ class SAMSegmentationService:
 
         # Prepare satellite_image dict with image dimensions
         sat_img_with_dims = {
-            'center_lat': satellite_image['center_lat'],
-            'center_lon': satellite_image['center_lon'],
-            'zoom_level': satellite_image.get('zoom_level', 20),
-            'image_width_px': image_width_px,
-            'image_height_px': image_height_px
+            "center_lat": satellite_image["center_lat"],
+            "center_lon": satellite_image["center_lon"],
+            "zoom_level": satellite_image.get("zoom_level", 20),
+            "image_width_px": image_width_px,
+            "image_height_px": image_height_px,
         }
 
         # Label segments with OSM data
         labeler = SAMSegmentLabeler(
-            overlap_threshold=overlap_threshold,
-            use_osm=use_osm
+            overlap_threshold=overlap_threshold, use_osm=use_osm
         )
         labeled_segments = labeler.label_segments(
-            sam_segments,
-            detections,
-            satellite_image=sat_img_with_dims
+            sam_segments, detections, satellite_image=sat_img_with_dims
         )
 
         print(
@@ -418,10 +420,7 @@ class SAMSegmentationService:
         return labeled_segments
 
     def segment_image_labeled_geojson(
-        self,
-        satellite_image: Dict,
-        detections: Dict,
-        overlap_threshold: float = 0.5
+        self, satellite_image: Dict, detections: Dict, overlap_threshold: float = 0.5
     ) -> Dict:
         """Run segmentation with labeling and return GeoJSON.
 
@@ -434,9 +433,7 @@ class SAMSegmentationService:
             GeoJSON FeatureCollection with labeled segments
         """
         labeled_segments = self.segment_image_labeled(
-            satellite_image,
-            detections,
-            overlap_threshold
+            satellite_image, detections, overlap_threshold
         )
 
         return {

@@ -19,7 +19,9 @@ class VehicleDetection:
     pixel_bbox: Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 
     # Geographic coordinates (polygon)
-    geo_polygon: List[Tuple[float, float]] = field(default_factory=list)  # [(lon, lat), ...]
+    geo_polygon: List[Tuple[float, float]] = field(
+        default_factory=list
+    )  # [(lon, lat), ...]
 
     # Detection metadata
     confidence: float = 0.0
@@ -40,7 +42,9 @@ class VehicleDetection:
             "type": "Feature",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [self.geo_polygon],  # GeoJSON polygon needs array of rings
+                "coordinates": [
+                    self.geo_polygon
+                ],  # GeoJSON polygon needs array of rings
             },
             "properties": {
                 "feature_type": "vehicle",

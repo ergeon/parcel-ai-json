@@ -50,9 +50,9 @@ class ImageCoordinateConverter:
         earth_radius = wgs84.ellipsoid.semi_major_metre
 
         google_map_magic_const = (2 * math.pi * earth_radius) / 256
-        self.meters_per_pixel = (google_map_magic_const * math.cos(center_lat * math.pi / 180)) / (
-            2**zoom_level
-        )
+        self.meters_per_pixel = (
+            google_map_magic_const * math.cos(center_lat * math.pi / 180)
+        ) / (2**zoom_level)
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
         """Convert image pixel coordinates to geographic coordinates (lon, lat).
