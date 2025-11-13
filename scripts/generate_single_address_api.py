@@ -82,8 +82,9 @@ def detect_via_api(image_path, lat, lon, zoom=20):
         }
 
         print(f"  Calling API: {detect_url}")
+        print(f"  (This may take 5-10 minutes for first request with SAM...)")
         response = requests.post(
-            detect_url, files=files, data=data, timeout=300
+            detect_url, files=files, data=data, timeout=600
         )
         response.raise_for_status()
 
@@ -334,10 +335,41 @@ def generate_for_address(address, lat, lon, zoom=20):
 
 
 if __name__ == "__main__":
-    # 2218 San Antonio St, Grand Prairie, TX 75051
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate detections and Folium map for a single address"
+    )
+    parser.add_argument(
+        "--address",
+        type=str,
+        default="2218 San Antonio St, Grand Prairie, TX 75051",
+        help="Full address string"
+    )
+    parser.add_argument(
+        "--lat",
+        type=float,
+        default=32.7459,
+        help="Latitude of address center"
+    )
+    parser.add_argument(
+        "--lon",
+        type=float,
+        default=-96.9978,
+        help="Longitude of address center"
+    )
+    parser.add_argument(
+        "--zoom",
+        type=int,
+        default=20,
+        help="Google Maps zoom level (default: 20)"
+    )
+
+    args = parser.parse_args()
+
     generate_for_address(
-        address="2218 San Antonio St, Grand Prairie, TX 75051",
-        lat=32.7459,
-        lon=-96.9978,
-        zoom=20
+        address=args.address,
+        lat=args.lat,
+        lon=args.lon,
+        zoom=args.zoom
     )

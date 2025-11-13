@@ -74,12 +74,12 @@ clf = dtr.Classifier(); \
 print('Detectree ready'); \
 "
 
-# Pre-download DeepForest model (downloads on first use in DeepForestService)
-# Model will be cached at /root/.cache/torch when first loaded
-RUN python -c "\
-print('DeepForest will download model on first use'); \
-print('Model cache directory: /root/.cache/torch'); \
-"
+# Copy pre-downloaded DeepForest model (ResNet50 backbone)
+# Avoids ~6.5 minute download during each build
+RUN mkdir -p /root/.cache/torch/hub/checkpoints
+COPY models/resnet50-0676ba61.pth /root/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth
+RUN echo "DeepForest model copied to /root/.cache/torch/hub/checkpoints/" && \
+    ls -lh /root/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth
 
 # Create directory for temporary file uploads
 RUN mkdir -p /tmp/uploads && chmod 777 /tmp/uploads
