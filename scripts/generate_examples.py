@@ -662,12 +662,12 @@ def generate_examples(num_examples=20):
             # Detect all property features
             detections = detector.detect_all(satellite_image)
 
-            # Run SAM segmentation (ViT-H for highest accuracy)
+            # Run SAM segmentation with labeling (ViT-H for highest accuracy)
             from parcel_ai_json.sam_segmentation import SAMSegmentationService
 
             # Auto-detect best device (cuda/mps/cpu)
             device = get_best_device()
-            print(f"  Running SAM segmentation (device: {device})...")
+            print(f"  Running SAM segmentation with labeling (device: {device})...")
             sam_service = SAMSegmentationService(
                 model_type="vit_h",
                 device=device,
@@ -676,8 +676,28 @@ def generate_examples(num_examples=20):
                 stability_score_thresh=0.95,
                 min_mask_region_area=100,
             )
-            sam_segments = sam_service.segment_image(satellite_image)
-            print(f"  ✓ SAM: {len(sam_segments)} segments detected")
+
+            # Use labeled segmentation to classify segments by overlap with detections
+            detection_dict = {
+                "vehicles": detections.vehicles,
+                "pools": detections.pools,
+                "amenities": detections.amenities,
+                "trees": detections.trees,
+                "tree_polygons": detections.tree_polygons,
+            }
+            sam_segments = sam_service.segment_image_labeled(
+                satellite_image,
+                detection_dict,
+                overlap_threshold=0.5
+            )
+
+            # Count labeled segments
+            label_counts = {}
+            for seg in sam_segments:
+                label_counts[seg.primary_label] = label_counts.get(seg.primary_label, 0) + 1
+
+            labels_summary = ", ".join([f"{count} {label}" for label, count in sorted(label_counts.items())])
+            print(f"  ✓ SAM: {len(sam_segments)} segments detected ({labels_summary})")
 
             # Generate combined GeoJSON
             combined_geojson = detections.to_geojson()
