@@ -1,4 +1,17 @@
-"""Create interactive folium map with SAM segments and semantic detections.
+"""
+⚠️  ARCHITECTURE VIOLATION WARNING ⚠️
+
+This script directly instantiates model services (PropertyDetectionService, SAMSegmentationService)
+which VIOLATES the Docker-first architecture mandated in CLAUDE.md.
+
+This script should be refactored to use the REST API at http://localhost:8000/detect instead.
+See scripts/generate_single_address_api.py for the correct implementation pattern.
+
+TODO: Refactor to eliminate direct service instantiation and use REST API exclusively.
+
+---
+
+Create interactive folium map with SAM segments and semantic detections.
 
 This script generates an enhanced folium map showing:
 - Satellite imagery base layer
