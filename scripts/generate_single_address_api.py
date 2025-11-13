@@ -147,7 +147,7 @@ def create_folium_map(
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
     amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
     tree_group = folium.FeatureGroup(name="🌳 Trees", show=True)
-    sam_group = folium.FeatureGroup(name="🔷 SAM Segments", show=False)
+    sam_group = folium.FeatureGroup(name="🔷 SAM Segments", show=True)
 
     # Add detections
     for feature in geojson_data["features"]:
