@@ -327,8 +327,8 @@ class DetectreeService:
     """Tree detection service using detectree library.
 
     Can run in two modes:
-    1. Native mode (use_docker=False): Use detectree directly (Linux/Docker container)
-    2. Docker mode (use_docker=True): Run detectree in Docker container (macOS compatibility)
+    1. Native (use_docker=False): Use detectree directly (Linux/Docker)
+    2. Docker (use_docker=True): Run in Docker container (macOS compat)
     """
 
     def __init__(

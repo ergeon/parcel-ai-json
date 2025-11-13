@@ -238,7 +238,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
                 f"<b>{label_display}</b><br>"
                 f"Confidence: {props.get('label_confidence', 0):.2f}<br>"
                 f"Source: {props.get('label_source', 'N/A')}<br>"
-                f"Area: {props.get('area_sqm', 0):.1f} m² ({props.get('area_pixels', 0)} px)<br>"
+                f"Area: {props.get('area_sqm', 0):.1f} m² "
+                f"({props.get('area_pixels', 0)} px)<br>"
                 f"Stability: {props.get('stability_score', 0):.3f}<br>"
                 f"Reason: {props.get('labeling_reason', 'N/A')}",
                 max_width=300,
@@ -378,9 +379,12 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     <p style="margin:0; font-weight: bold; text-align: center;">Legend</p>
     <p style="margin:5px 0;"><span style="color:#800080;">●</span> Vehicles</p>
     <p style="margin:5px 0;"><span style="color:#0066cc;">●</span> Swimming Pools</p>
-    <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities</p>
-    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees (DeepForest)</p>
-    <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Coverage (detectree)</p>
+    <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities
+    </p>
+    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees
+    </p>
+    <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Cov
+    </p>
     <p style="margin:5px 0;"><span style="color:#FF0000;">●</span> SAM: Vehicle</p>
     <p style="margin:5px 0;"><span style="color:#87CEEB;">●</span> SAM: Driveway</p>
     <p style="margin:5px 0;"><span style="color:#808080;">●</span> SAM: Unknown</p>

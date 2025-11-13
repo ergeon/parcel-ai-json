@@ -38,7 +38,8 @@ def get_detector() -> PropertyDetectionService:
         # Auto-detect best device (cuda/mps/cpu)
         device = get_best_device()
         logger.info(
-            f"Initializing PropertyDetectionService with DeepForest (device: {device})..."
+            f"Initializing PropertyDetectionService with "
+            f"DeepForest (device: {device})..."
         )
 
         # Create property detector with parallel DeepForest + detectree tree detection
@@ -374,8 +375,10 @@ async def detect_amenities(
     center_lon: float = Form(...),
     zoom_level: int = Form(20),
 ):
-    """Detect only amenities (tennis courts, basketball courts, etc.) in satellite image."""
-    logger.info(f"Processing amenity detection: lat={center_lat}, lon={center_lon}")
+    """Detect only amenities (tennis/basketball courts, etc.)."""
+    logger.info(
+        f"Processing amenity detection: lat={center_lat}, lon={center_lon}"
+    )
 
     temp_dir = None
     try:

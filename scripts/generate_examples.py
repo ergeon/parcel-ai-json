@@ -242,7 +242,10 @@ def generate_folium_map(
 
             folium.Polygon(
                 locations=coords_swapped,
-                popup=f"<b>Vehicle</b><br>Class: {vehicle_class}<br>Confidence: {confidence:.1%}",
+                popup=(
+                    f"<b>Vehicle</b><br>Class: {vehicle_class}<br>"
+                    f"Confidence: {confidence:.1%}"
+                ),
                 tooltip=f"{vehicle_class} ({confidence:.1%})",
                 fillColor="#9933FF",
                 color="#6600CC",
@@ -258,7 +261,10 @@ def generate_folium_map(
 
             folium.Polygon(
                 locations=coords_swapped,
-                popup=f"<b>Pool</b><br>Area: {area_sqm:.1f} m²<br>Confidence: {confidence:.1%}",
+                popup=(
+                    f"<b>Pool</b><br>Area: {area_sqm:.1f} m²<br>"
+                    f"Confidence: {confidence:.1%}"
+                ),
                 tooltip=f"Pool ({confidence:.1%})",
                 fillColor="#0099FF",
                 color="#0066CC",
@@ -425,11 +431,13 @@ def generate_examples(num_examples=3):
             sam_segments = sum(
                 1
                 for f in geojson_data["features"]
-                if f["properties"].get("feature_type") == "labeled_sam_segment"
+                if f["properties"].get("feature_type")
+                == "labeled_sam_segment"
             )
 
             print(
-                f"  ✓ Detected: {vehicles} vehicles, {pools} pools, {amenities} amenities, {sam_segments} SAM segments"
+                f"  ✓ Detected: {vehicles} vehicles, {pools} pools, "
+                f"{amenities} amenities, {sam_segments} SAM segments"
             )
 
             # Save GeoJSON

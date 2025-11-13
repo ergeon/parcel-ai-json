@@ -125,12 +125,10 @@ def test_sam_labeling():
     )
     unknown_count = label_counts.get("unknown", 0)
 
-    print(
-        f"\nLabeled segments: {labeled_count} ({labeled_count / len(labeled_segments) * 100:.1f}%)"
-    )  # noqa: E501
-    print(
-        f"Unknown segments: {unknown_count} ({unknown_count / len(labeled_segments) * 100:.1f}%)"
-    )  # noqa: E501
+    labeled_pct = labeled_count / len(labeled_segments) * 100
+    unknown_pct = unknown_count / len(labeled_segments) * 100
+    print(f"\nLabeled segments: {labeled_count} ({labeled_pct:.1f}%)")
+    print(f"Unknown segments: {unknown_count} ({unknown_pct:.1f}%)")
 
     print("\nLabel distribution:")
     for label, count in label_counts.most_common():

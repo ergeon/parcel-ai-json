@@ -153,12 +153,12 @@ class PropertyDetectionService:
             pool_confidence: Minimum confidence for pools (0.0-1.0)
             amenity_confidence: Minimum confidence for amenities (0.0-1.0)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
-            tree_confidence: Minimum confidence for trees (0.0-1.0, default: 0.1)
+            tree_confidence: Minimum confidence (0.0-1.0, default: 0.1)
             tree_model_name: Hugging Face model name for DeepForest
-            detectree_extract_polygons: Extract tree cluster polygons from detectree
-            detectree_min_tree_area_pixels: Minimum tree area in pixels for detectree
-            detectree_simplify_tolerance_meters: Polygon simplification tolerance in meters
-            detectree_use_docker: Run detectree in Docker (True) or natively (False)
+            detectree_extract_polygons: Extract tree polygons
+            detectree_min_tree_area_pixels: Min tree area (pixels)
+            detectree_simplify_tolerance_meters: Simplification (meters)
+            detectree_use_docker: Run detectree in Docker or natively
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(

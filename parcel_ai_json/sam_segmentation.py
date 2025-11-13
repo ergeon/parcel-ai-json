@@ -112,8 +112,8 @@ class SAMSegmentationService:
         except ImportError:
             raise ImportError(
                 "SAM segmentation requires segment_anything package. "
-                "Install with: "
-                "pip install git+https://github.com/facebookresearch/segment-anything.git"
+                "Install with: pip install "
+                "git+https://github.com/facebookresearch/segment-anything.git"
             )
 
         # Determine checkpoint path
@@ -153,7 +153,8 @@ class SAMSegmentationService:
         actual_device = self.device
         if self.device == "mps":
             print(
-                "Warning: SAM doesn't support MPS (Apple Silicon GPU) - using CPU instead"
+                "Warning: SAM doesn't support MPS "
+                "(Apple Silicon GPU) - using CPU instead"
             )
             actual_device = "cpu"
 

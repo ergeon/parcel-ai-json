@@ -8,4 +8,6 @@ exclude =
     dist,
     venv,
     .venv,
-    *.egg-info
+    *.egg-info,
+    setup.py,
+    tests/
