@@ -78,7 +78,7 @@ def detect_via_api(image_path, lat, lon, zoom=20):
         }
 
         print(f"  Calling API: {detect_url}")
-        print(f"  (This may take 5-10 minutes for first request with SAM...)")
+        print("  (This may take 5-10 minutes for first request with SAM...)")
         response = requests.post(detect_url, files=files, data=data, timeout=600)
         response.raise_for_status()
 

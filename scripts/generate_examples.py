@@ -288,7 +288,7 @@ def generate_folium_map(
 
             folium.Polygon(
                 locations=coords_swapped,
-                popup=f"<b>Tree</b>",
+                popup="<b>Tree</b>",
                 tooltip="Tree",
                 fillColor="#228B22",
                 color="#1B6B1B",
@@ -398,7 +398,7 @@ def generate_examples(num_examples=3):
             print(f"  Coordinates: ({lat:.4f}, {lon:.4f})")
 
             # Call REST API
-            print(f"  Calling REST API at http://localhost:8000/api/v1/detect...")
+            print("  Calling REST API at http://localhost:8000/api/v1/detect...")
             api_result = detect_via_api(img_path, lat, lon, zoom_level=20)
 
             # Extract GeoJSON
@@ -449,7 +449,7 @@ def generate_examples(num_examples=3):
             folium_dir.mkdir(exist_ok=True)
             folium_path = folium_dir / f"{img_path.stem}.html"
 
-            print(f"  Generating folium map...")
+            print("  Generating folium map...")
             generate_folium_map(
                 satellite_image_path=img_path,
                 geojson_data=geojson_data,
