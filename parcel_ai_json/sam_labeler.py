@@ -290,7 +290,7 @@ class SAMSegmentLabeler:
         best_iou = 0.0
 
         # Check vehicles
-        for vehicle in detections.get('vehicles', []):
+        for i, vehicle in enumerate(detections.get('vehicles', [])):
             iou = self._calculate_iou(
                 segment_poly,
                 self._detection_to_polygon(vehicle)
@@ -302,11 +302,11 @@ class SAMSegmentLabeler:
                     'confidence': iou,
                     'source': 'overlap',
                     'reason': f'overlap_iou_{iou:.2f}',
-                    'related_ids': [f'vehicle_{vehicle.detection_id}']
+                    'related_ids': [f'vehicle_{i}']
                 }
 
         # Check pools
-        for pool in detections.get('pools', []):
+        for i, pool in enumerate(detections.get('pools', [])):
             iou = self._calculate_iou(
                 segment_poly,
                 self._detection_to_polygon(pool)
@@ -318,11 +318,11 @@ class SAMSegmentLabeler:
                     'confidence': iou,
                     'source': 'overlap',
                     'reason': f'overlap_iou_{iou:.2f}',
-                    'related_ids': [f'pool_{pool.detection_id}']
+                    'related_ids': [f'pool_{i}']
                 }
 
         # Check amenities
-        for amenity in detections.get('amenities', []):
+        for i, amenity in enumerate(detections.get('amenities', [])):
             iou = self._calculate_iou(
                 segment_poly,
                 self._detection_to_polygon(amenity)
@@ -335,7 +335,7 @@ class SAMSegmentLabeler:
                     'source': 'overlap',
                     'subtype': amenity.class_name,
                     'reason': f'overlap_iou_{iou:.2f}',
-                    'related_ids': [f'amenity_{amenity.detection_id}']
+                    'related_ids': [f'amenity_{i}']
                 }
 
         # Check tree polygons (from detectree)
