@@ -376,19 +376,21 @@ class SAMSegmentLabeler:
         segment_centroid = segment_poly.centroid
 
         # Check if segment contains a vehicle (likely driveway)
-        for vehicle in detections.get('vehicles', []):
+        for i, vehicle in enumerate(detections.get('vehicles', [])):
             vehicle_poly = self._detection_to_polygon(vehicle)
             vehicle_center = vehicle_poly.centroid
 
             if segment_poly.contains(vehicle_center):
                 # Segment must be significantly larger to be driveway
-                if segment.area_sqm > vehicle.area_sqm * 2:
+                # Calculate vehicle area using pyproj for accurate comparison
+                vehicle_area_sqm = self._calculate_polygon_area_sqm(vehicle_poly)
+                if segment.area_sqm and vehicle_area_sqm and segment.area_sqm > vehicle_area_sqm * 2:
                     return {
                         'label': 'driveway',
                         'confidence': 0.70,
                         'source': 'containment',
                         'reason': 'contains_vehicle',
-                        'related_ids': [f'vehicle_{vehicle.detection_id}']
+                        'related_ids': [f'vehicle_{i}']
                     }
 
         # Check if segment is inside tree coverage
@@ -404,20 +406,21 @@ class SAMSegmentLabeler:
                 }
 
         # Check if segment contains pool (likely pool deck)
-        for pool in detections.get('pools', []):
+        for i, pool in enumerate(detections.get('pools', [])):
             pool_poly = self._detection_to_polygon(pool)
             pool_center = pool_poly.centroid
 
             if segment_poly.contains(pool_center):
                 # Check if segment is slightly larger
-                if segment.area_sqm > pool.area_sqm * 1.2:
+                pool_area_sqm = self._calculate_polygon_area_sqm(pool_poly)
+                if segment.area_sqm and pool_area_sqm and segment.area_sqm > pool_area_sqm * 1.2:
                     return {
                         'label': 'pavement',
                         'subtype': 'pool_deck',
                         'confidence': 0.65,
                         'source': 'containment',
                         'reason': 'contains_pool',
-                        'related_ids': [f'pool_{pool.detection_id}']
+                        'related_ids': [f'pool_{i}']
                     }
 
         return None
@@ -467,3 +470,27 @@ class SAMSegmentLabeler:
         except Exception:
             # If conversion fails, return empty polygon
             return Polygon()
+
+    def _calculate_polygon_area_sqm(self, polygon: Polygon) -> float:
+        """Calculate polygon area in square meters using geodesic calculations.
+
+        Args:
+            polygon: Shapely Polygon in WGS84 coordinates
+
+        Returns:
+            Area in square meters
+        """
+        from pyproj import Geod
+
+        if not polygon.is_valid or polygon.is_empty:
+            return 0.0
+
+        geod = Geod(ellps="WGS84")
+        exterior_coords = list(polygon.exterior.coords)
+        lons, lats = zip(*exterior_coords)
+
+        try:
+            area, _ = geod.polygon_area_perimeter(lons, lats)
+            return abs(area)
+        except Exception:
+            return 0.0
