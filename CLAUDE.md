@@ -79,6 +79,40 @@ with open("output/examples/images/image.jpg", "rb") as f:
     detections = response.json()
 ```
 
+### ⛔ STRICT PROHIBITION ⛔
+
+**NEVER DIRECTLY INSTANTIATE MODEL SERVICES IN SCRIPTS - THIS IS STRICTLY PROHIBITED**
+
+The following patterns are **ABSOLUTELY FORBIDDEN** in any script or tool:
+
+```python
+# ❌ FORBIDDEN - DO NOT DO THIS
+from parcel_ai_json.property_detector import PropertyDetectionService
+from parcel_ai_json.sam_segmentation import SAMSegmentationService
+
+detector = PropertyDetectionService()  # FORBIDDEN!
+sam_service = SAMSegmentationService()  # FORBIDDEN!
+```
+
+**Why this is strictly prohibited:**
+1. **Breaks Docker-first architecture** - All models must run inside containers
+2. **Causes volume mount errors** - Scripts cannot access Docker filesystem
+3. **Bypasses isolation** - Models have complex dependencies requiring Docker
+4. **Inconsistent behavior** - Direct instantiation works locally but fails in production
+
+**When direct instantiation IS allowed:**
+- Unit tests (with proper mocking)
+- Model development/training
+- Jupyter notebooks for exploration
+
+**When direct instantiation is FORBIDDEN:**
+- Production scripts (e.g., `generate_examples.py`, `create_sam_folium_map.py`)
+- Data processing pipelines
+- Any script intended for external use
+- Command-line tools
+
+If you find yourself tempted to instantiate a service directly, **STOP** and use the REST API instead.
+
 ### Development Workflow
 
 1. **Start Docker container first**:

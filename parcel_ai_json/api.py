@@ -106,6 +106,7 @@ async def detect_property(
     format: str = Form("geojson", description="Output format: 'geojson' or 'summary'"),
     include_sam: bool = Form(False, description="Include SAM segmentation (default: False)"),
     sam_points_per_side: int = Form(32, description="SAM grid sampling density (default: 32)"),
+    label_sam_segments: bool = Form(True, description="Label SAM segments with semantic labels (default: True)"),
 ):
     """Detect all property features in satellite image.
 
@@ -117,6 +118,7 @@ async def detect_property(
         format: Output format - 'geojson' (default) or 'summary'
         include_sam: Include SAM segmentation (default: False)
         sam_points_per_side: SAM grid sampling density (default: 32)
+        label_sam_segments: Label SAM segments with semantic labels (default: True)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
@@ -196,6 +198,34 @@ async def detect_property(
                     sam_service.points_per_side = sam_points_per_side
 
                 sam_segments = sam_service.segment_image(satellite_image)
+
+                # Label SAM segments if requested
+                if label_sam_segments:
+                    logger.info("Labeling SAM segments with semantic labels...")
+                    from parcel_ai_json.sam_labeler import SAMSegmentLabeler
+
+                    # Get detections for labeling
+                    detections = detector.detect_all(satellite_image)
+
+                    # Create detection dictionary
+                    detection_dict = {
+                        "vehicles": detections.vehicles or [],
+                        "pools": detections.swimming_pools or [],
+                        "amenities": detections.amenities or [],
+                        "trees": detections.trees.trees if detections.trees else [],
+                        "tree_polygons": (
+                            detections.trees.tree_polygons
+                            if detections.trees and detections.trees.tree_polygons
+                            else []
+                        ),
+                    }
+
+                    # Label segments
+                    labeler = SAMSegmentLabeler(overlap_threshold=0.3)
+                    sam_segments = labeler.label_segments(sam_segments, detection_dict)
+
+                    labeled_count = sum(1 for seg in sam_segments if seg.primary_label != 'unknown')
+                    logger.info(f"Labeled {len(sam_segments)} segments: {labeled_count} with semantic labels")
 
                 # Add SAM segments to GeoJSON
                 sam_features = [seg.to_geojson_feature() for seg in sam_segments]
