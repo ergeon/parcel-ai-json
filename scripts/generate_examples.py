@@ -1,10 +1,11 @@
 """
-Generate 20 example vehicle detection outputs from satellite images.
+Generate example vehicle detection outputs from satellite images.
 
 This script processes satellite images from the det-state-visualizer project
 and generates GeoJSON files with vehicle detections.
 """
 
+import argparse
 import json
 import csv
 import shutil
@@ -560,7 +561,7 @@ def generate_html_visualization(results, output_dir):
     return html_content
 
 
-def generate_examples(num_examples=20):
+def generate_examples(num_examples=3):
     """Generate vehicle detection examples."""
     print("=" * 80)
     print(f"Generating {num_examples} Vehicle Detection Examples")
@@ -839,4 +840,14 @@ def generate_examples(num_examples=20):
 
 
 if __name__ == "__main__":
-    generate_examples(num_examples=20)
+    parser = argparse.ArgumentParser(
+        description="Generate vehicle detection examples from satellite images"
+    )
+    parser.add_argument(
+        "--num-examples",
+        type=int,
+        default=3,
+        help="Number of examples to generate (default: 3)"
+    )
+    args = parser.parse_args()
+    generate_examples(num_examples=args.num_examples)

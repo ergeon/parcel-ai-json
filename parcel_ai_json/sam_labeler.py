@@ -198,13 +198,13 @@ class SAMSegmentLabeler:
 
     def __init__(
         self,
-        overlap_threshold: float = 0.5,
+        overlap_threshold: float = 0.3,
         containment_threshold: float = 0.7
     ):
         """Initialize SAM segment labeler.
 
         Args:
-            overlap_threshold: IoU threshold for overlap-based labeling
+            overlap_threshold: IoU threshold for overlap-based labeling (default: 0.3)
             containment_threshold: Threshold for containment-based labeling
         """
         self.overlap_threshold = overlap_threshold
