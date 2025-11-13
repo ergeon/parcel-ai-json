@@ -707,6 +707,10 @@ def generate_examples(num_examples=3):
             # Generate combined GeoJSON
             combined_geojson = detections.to_geojson()
 
+            # Add SAM segments to GeoJSON
+            for seg in sam_segments:
+                combined_geojson['features'].append(seg.to_geojson_feature())
+
             # Get summary
             summary = detections.summary()
             amenity_summary = (
