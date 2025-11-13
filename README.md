@@ -4,11 +4,13 @@ Unified property detection for satellite imagery with GeoJSON output.
 
 ## Features
 
-- **Unified Detection**: Detect vehicles, pools, amenities, and trees in one call
+- **Unified Detection**: Detect vehicles, pools, amenities, trees, and SAM segments in one call
 - **Vehicle Detection**: Cars, trucks, and other vehicles using YOLOv8-OBB (DOTA aerial dataset)
 - **Swimming Pool Detection**: Detect swimming pools (DOTA class 14)
 - **Amenity Detection**: Tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
 - **Tree Coverage Detection**: Estimate tree coverage percentage using detectree (Docker-based)
+- **SAM Segmentation**: General-purpose image segmentation with semantic labeling (vehicles, driveways, buildings, etc.)
+- **OSM Integration**: Fetch OpenStreetMap data for parcel context and geographic features
 - **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
 - **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
 - **Standalone**: Works independently - no dependency on parcel-geojson
@@ -291,7 +293,9 @@ This is a **containerized microservice** with a FastAPI REST API.
 **Key Components:**
 - FastAPI REST API (6 endpoints)
 - YOLOv8-OBB detection (vehicles, pools, amenities)
+- SAM (Segment Anything) general-purpose segmentation with semantic labeling
 - detectree tree coverage analysis
+- OpenStreetMap data integration
 - Geodesic coordinate conversion (pyproj)
 - GeoJSON generation
 

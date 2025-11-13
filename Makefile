@@ -49,7 +49,7 @@ coverage-html: ## Generate HTML coverage report
 	@open htmlcov/index.html 2>/dev/null || xdg-open htmlcov/index.html 2>/dev/null || echo "Open htmlcov/index.html in your browser"
 
 lint: ## Run code linters (flake8)
-	@source $(VENV_BIN)/activate && $(VENV_BIN)/flake8 parcel_ai_json/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+	@source $(VENV_BIN)/activate && $(VENV_BIN)/flake8
 
 format: ## Format code with black
 	@source $(VENV_BIN)/activate && $(VENV_BIN)/black parcel_ai_json/ tests/ examples/ scripts/
