@@ -680,10 +680,10 @@ def generate_examples(num_examples=20):
             # Use labeled segmentation to classify segments by overlap with detections
             detection_dict = {
                 "vehicles": detections.vehicles,
-                "pools": detections.pools,
+                "pools": detections.swimming_pools,
                 "amenities": detections.amenities,
-                "trees": detections.trees,
-                "tree_polygons": detections.tree_polygons,
+                "trees": detections.trees.trees if detections.trees else [],
+                "tree_polygons": detections.trees.tree_polygons if detections.trees else [],
             }
             sam_segments = sam_service.segment_image_labeled(
                 satellite_image,
