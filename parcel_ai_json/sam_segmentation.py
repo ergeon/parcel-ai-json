@@ -145,7 +145,14 @@ class SAMSegmentationService:
 
         # Load SAM model
         self._sam = sam_model_registry[self.model_type](checkpoint=str(checkpoint_path))
-        self._sam.to(device=self.device)
+
+        # SAM doesn't support float64 on MPS, force CPU if MPS is requested
+        actual_device = self.device
+        if self.device == "mps":
+            print("Warning: SAM doesn't support MPS (Apple Silicon GPU) - using CPU instead")
+            actual_device = "cpu"
+
+        self._sam.to(device=actual_device)
 
         # Create automatic mask generator
         self._mask_generator = SamAutomaticMaskGenerator(
