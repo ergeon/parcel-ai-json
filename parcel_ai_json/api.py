@@ -13,7 +13,7 @@ import logging
 
 from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
-from parcel_ai_json.sam_segmentation import SAMSegmentationService
+from parcel_ai_json.sam_segmentation import SAMSegmentationService, SAMSegmentLabeler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -274,7 +274,7 @@ async def detect_property(
                     }
 
                     # Label segments (with OSM buildings support)
-                    labeler = SAMSegmentLabeler(  # noqa: F821
+                    labeler = SAMSegmentLabeler(
                         overlap_threshold=0.3, osm_overlap_threshold=0.5, use_osm=True
                     )
                     sam_segments = labeler.label_segments(
