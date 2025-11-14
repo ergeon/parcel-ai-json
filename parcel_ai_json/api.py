@@ -13,7 +13,8 @@ import logging
 
 from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
-from parcel_ai_json.sam_segmentation import SAMSegmentationService, SAMSegmentLabeler
+from parcel_ai_json.sam_segmentation import SAMSegmentationService
+from parcel_ai_json.sam_labeler import SAMSegmentLabeler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
