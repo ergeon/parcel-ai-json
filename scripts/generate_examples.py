@@ -16,6 +16,7 @@ import requests
 from pathlib import Path
 import folium
 from folium import plugins
+from PIL import Image
 
 
 def ensure_docker_running():
@@ -90,8 +91,13 @@ def detect_via_api(image_path, center_lat, center_lon, zoom_level=20):
     """
     url = "http://localhost:8000/detect"
 
+    # Detect actual image format (not relying on file extension)
+    with Image.open(image_path) as img:
+        img_format = img.format.lower()  # Returns 'jpeg' or 'png'
+        mime_type = f"image/{img_format}"
+
     with open(image_path, "rb") as f:
-        files = {"image": (image_path.name, f, "image/jpeg")}
+        files = {"image": (image_path.name, f, mime_type)}
         data = {
             "center_lat": center_lat,
             "center_lon": center_lon,
@@ -431,8 +437,7 @@ def generate_examples(num_examples=3):
             sam_segments = sum(
                 1
                 for f in geojson_data["features"]
-                if f["properties"].get("feature_type")
-                == "labeled_sam_segment"
+                if f["properties"].get("feature_type") == "labeled_sam_segment"
             )
 
             print(
