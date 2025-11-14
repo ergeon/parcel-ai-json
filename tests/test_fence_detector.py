@@ -19,9 +19,7 @@ class TestFenceDetection(unittest.TestCase):
         """Test creating a FenceDetection object."""
         prob_mask = np.random.rand(512, 512).astype(np.float32)
         binary_mask = (prob_mask > 0.1).astype(np.uint8) * 255
-        geo_polygons = [
-            [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)]
-        ]
+        geo_polygons = [[(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)]]
 
         detection = FenceDetection(
             probability_mask=prob_mask,
@@ -92,9 +90,7 @@ class TestFenceDetection(unittest.TestCase):
         self.assertEqual(len(features), 2)
         self.assertEqual(features[0]["type"], "Feature")
         self.assertEqual(features[0]["geometry"]["type"], "Polygon")
-        self.assertEqual(
-            features[0]["geometry"]["coordinates"], [geo_polygons[0]]
-        )
+        self.assertEqual(features[0]["geometry"]["coordinates"], [geo_polygons[0]])
         self.assertEqual(features[0]["properties"]["feature_type"], "fence")
         self.assertEqual(features[0]["properties"]["segment_id"], 0)
         self.assertEqual(features[0]["properties"]["max_probability"], 0.75)
@@ -124,9 +120,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         self.assertEqual(service.threshold, 0.1)
         self.assertEqual(service.device, "cpu")
-        self.assertTrue(
-            service.model_path.endswith("hed_fence_checkpoint_best.pth")
-        )
+        self.assertTrue(service.model_path.endswith("hed_fence_checkpoint_best.pth"))
         self.assertIsNone(service._model)
 
     @patch("parcel_ai_json.fence_detector.Path")

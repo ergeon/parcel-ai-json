@@ -131,10 +131,11 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     trees_deepforest = []
     trees_detectree = []
     fences = []
+    osm_buildings = []
 
     for feature in features:
         props = feature.get("properties", {})
-        detection_type = props.get("type", "unknown")
+        detection_type = props.get("detection_type", props.get("type", "unknown"))
         feature_type = props.get("feature_type", "")
 
         if detection_type == "sam_segment":
@@ -151,6 +152,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             trees_detectree.append(feature)
         elif feature_type == "fence":
             fences.append(feature)
+        elif detection_type == "osm_building":
+            osm_buildings.append(feature)
 
     print(f"   ✓ Received {len(sam_segments)} SAM segments")
     print(f"   ✓ Received {len(vehicles)} vehicles")
@@ -159,6 +162,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Received {len(trees_deepforest)} trees (DeepForest)")
     print(f"   ✓ Received {len(trees_detectree)} tree polygons (detectree)")
     print(f"   ✓ Received {len(fences)} fence segments")
+    print(f"   ✓ Received {len(osm_buildings)} OSM buildings")
 
     # Get image dimensions for bounds calculation
     from PIL import Image
@@ -216,6 +220,9 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         name=f"Tree Coverage - detectree ({len(trees_detectree)})", show=True
     )
     fences_group = folium.FeatureGroup(name=f"Fences ({len(fences)})", show=True)
+    osm_buildings_group = folium.FeatureGroup(
+        name=f"OSM Buildings ({len(osm_buildings)})", show=True
+    )
 
     # Add SAM segments with semantic labels
     print("3. Adding labeled SAM segments to map...")
@@ -385,6 +392,33 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             tooltip=f"Fence #{i+1}",
         ).add_to(fences_group)
 
+    # Add OSM buildings
+    print(f"9. Adding OSM buildings to map...")
+    for i, osm_building in enumerate(osm_buildings):
+        props = osm_building["properties"]
+        coords = osm_building["geometry"]["coordinates"][0]
+
+        building_type = props.get("building_type", "yes")
+        area_sqm = props.get("area_sqm", 0)
+        osm_id = props.get("osm_id", "unknown")
+
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#FFA500",  # Orange
+            weight=2,
+            fill=True,
+            fillColor="#FFA500",
+            fillOpacity=0.3,
+            popup=folium.Popup(
+                f"<b>OSM Building</b><br>"
+                f"Type: {building_type}<br>"
+                f"Area: {area_sqm:.1f} m²<br>"
+                f"OSM ID: {osm_id}",
+                max_width=200,
+            ),
+            tooltip=f"OSM: {building_type}",
+        ).add_to(osm_buildings_group)
+
     # Add all groups to map
     sam_group.add_to(m)
     vehicles_group.add_to(m)
@@ -393,6 +427,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     deepforest_group.add_to(m)
     detectree_group.add_to(m)
     fences_group.add_to(m)
+    osm_buildings_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)

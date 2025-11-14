@@ -54,6 +54,40 @@ class ImageCoordinateConverter:
             google_map_magic_const * math.cos(center_lat * math.pi / 180)
         ) / (2**zoom_level)
 
+    def geo_to_pixel(self, lon: float, lat: float) -> Tuple[float, float]:
+        """Convert geographic coordinates (lon, lat) to image pixel coordinates.
+
+        Inverse of pixel_to_geo. Uses geodesic calculations for accuracy.
+
+        Args:
+            lon: Longitude in WGS84 degrees
+            lat: Latitude in WGS84 degrees
+
+        Returns:
+            Tuple of (pixel_x, pixel_y) from top-left of image
+        """
+        # Calculate geodesic distance and azimuth from image center to point
+        azimuth, _, distance = self.geod.inv(self.center_lon, self.center_lat, lon, lat)
+
+        # Decompose into East-West and North-South components
+        # Azimuth is in degrees clockwise from North
+        azimuth_rad = math.radians(azimuth)
+        dx_meters = distance * math.sin(azimuth_rad)  # East-West offset
+        dy_meters = distance * math.cos(azimuth_rad)  # North-South offset
+
+        # Note: Image Y increases downward (South), so negate dy_meters
+        dy_meters = -dy_meters
+
+        # Convert meters to pixels
+        dx_pixels = dx_meters / self.meters_per_pixel
+        dy_pixels = dy_meters / self.meters_per_pixel
+
+        # Convert offset from center to absolute pixel coordinates
+        pixel_x = (self.image_width_px / 2.0) + dx_pixels
+        pixel_y = (self.image_height_px / 2.0) + dy_pixels
+
+        return (pixel_x, pixel_y)
+
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
         """Convert image pixel coordinates to geographic coordinates (lon, lat).
 

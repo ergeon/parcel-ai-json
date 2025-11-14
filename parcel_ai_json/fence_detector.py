@@ -4,11 +4,12 @@ Uses HED (Holistically-Nested Edge Detection) with VGG16 backbone
 trained on satellite imagery with Regrid parcel data.
 """
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 from pathlib import Path
 from dataclasses import dataclass
 import numpy as np
 import torch
+from scipy.ndimage import gaussian_filter
 
 from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 from parcel_ai_json.hed_model import HED
@@ -126,9 +127,98 @@ class FenceDetectionService:
         print(f"✓ Trained for {checkpoint['epoch']} epochs")
         print(f"✓ Best val_loss: {checkpoint['best_val_loss']:.4f}")
 
+    def generate_fence_probability_mask(
+        self,
+        parcel_polygon: Union[List[Tuple[float, float]], Dict],
+        center_lat: float,
+        center_lon: float,
+        zoom_level: int = 20,
+        line_width: int = 3,
+        blur_sigma: float = 2.0,
+    ) -> np.ndarray:
+        """Generate fence probability mask from Regrid parcel polygon.
+
+        This method rasterizes the parcel boundary and applies Gaussian blur
+        to create a probability distribution for fence locations.
+
+        Args:
+            parcel_polygon: Either:
+                - List of (lon, lat) tuples defining parcel boundary
+                - GeoJSON polygon dict with 'coordinates' key
+            center_lat: Center latitude of satellite image (WGS84)
+            center_lon: Center longitude of satellite image (WGS84)
+            zoom_level: Zoom level of satellite image (default: 20)
+            line_width: Width of parcel boundary line in pixels (default: 3)
+            blur_sigma: Standard deviation for Gaussian blur (default: 2.0)
+
+        Returns:
+            np.ndarray of shape (512, 512), dtype float32, values in [0, 1]
+        """
+        try:
+            import cv2
+        except ImportError:
+            raise ImportError(
+                "opencv-python required for fence probability mask generation. "
+                "Install with: pip install opencv-python"
+            )
+
+        # Parse parcel polygon
+        if isinstance(parcel_polygon, dict):
+            # GeoJSON format: {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
+            coords = parcel_polygon.get("coordinates", [[]])[0]
+        else:
+            coords = parcel_polygon
+
+        if not coords or len(coords) < 3:
+            print(
+                "WARNING: Invalid parcel polygon - using empty fence probability mask"
+            )
+            return np.zeros((512, 512), dtype=np.float32)
+
+        # Create coordinate converter
+        coord_converter = ImageCoordinateConverter(
+            center_lat=center_lat,
+            center_lon=center_lon,
+            image_width_px=512,
+            image_height_px=512,
+            zoom_level=zoom_level,
+        )
+
+        # Convert geographic coords to pixel coords
+        pixel_coords = []
+        for lon, lat in coords:
+            x, y = coord_converter.geo_to_pixel(lon, lat)
+            pixel_coords.append([int(x), int(y)])
+
+        # Create blank mask
+        mask = np.zeros((512, 512), dtype=np.uint8)
+
+        # Draw parcel boundary
+        if len(pixel_coords) >= 2:
+            pts = np.array(pixel_coords, dtype=np.int32)
+            cv2.polylines(mask, [pts], isClosed=True, color=255, thickness=line_width)
+
+        # Apply Gaussian blur to create probability distribution
+        if blur_sigma > 0:
+            blurred = gaussian_filter(mask.astype(np.float32), sigma=blur_sigma)
+        else:
+            blurred = mask.astype(np.float32)
+
+        # Normalize to [0, 1]
+        if blurred.max() > 0:
+            blurred = blurred / blurred.max()
+
+        print(
+            f"✓ Generated fence probability mask from parcel polygon "
+            f"(line_width={line_width}, blur_sigma={blur_sigma})"
+        )
+
+        return blurred
+
     def detect_fences(
         self,
         satellite_image: Dict,
+        regrid_parcel_polygon: Optional[Union[List[Tuple[float, float]], Dict]] = None,
         fence_probability_mask: Optional[np.ndarray] = None,
     ) -> FenceDetection:
         """Detect fences in satellite image.
@@ -139,14 +229,32 @@ class FenceDetectionService:
                 - center_lat: float (center latitude WGS84)
                 - center_lon: float (center longitude WGS84)
                 - zoom_level: int (optional, default 20)
+            regrid_parcel_polygon: Optional Regrid parcel polygon to generate
+                fence probability mask. Can be either:
+                - List of (lon, lat) tuples defining parcel boundary
+                - GeoJSON polygon dict with 'coordinates' key
+                If provided, takes precedence over fence_probability_mask.
             fence_probability_mask: Optional pre-computed fence probability
-                mask from Regrid. Shape: (512, 512), dtype: uint8 (0-255)
-                If None, will use empty mask (zeros)
+                mask. Shape: (512, 512), dtype: float32 (0-1) or uint8 (0-255).
+                Only used if regrid_parcel_polygon is None.
+                If both are None, will use empty mask (zeros).
 
         Returns:
             FenceDetection object with probability mask and polygons
         """
         self._load_model()
+
+        # Generate fence probability mask from parcel polygon if provided
+        if regrid_parcel_polygon is not None:
+            center_lat = satellite_image["center_lat"]
+            center_lon = satellite_image["center_lon"]
+            zoom_level = satellite_image.get("zoom_level", 20)
+            fence_probability_mask = self.generate_fence_probability_mask(
+                parcel_polygon=regrid_parcel_polygon,
+                center_lat=center_lat,
+                center_lon=center_lon,
+                zoom_level=zoom_level,
+            )
 
         # Extract metadata
         image_path = satellite_image["path"]
@@ -294,7 +402,7 @@ class FenceDetectionService:
                 for point in contour.squeeze():
                     if point.ndim == 1 and len(point) == 2:
                         x, y = point
-                        lat, lon = coord_converter.pixel_to_latlon(int(x), int(y))
+                        lon, lat = coord_converter.pixel_to_geo(int(x), int(y))
                         geo_points.append((lon, lat))
 
                 if len(geo_points) >= 3:

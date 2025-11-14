@@ -8,6 +8,8 @@ from typing import List, Dict, Tuple, Optional
 import requests
 from shapely.geometry import Polygon
 from pyproj import Geod
+import time
+import random
 
 
 @dataclass
@@ -31,6 +33,28 @@ class OSMBuilding:
     def to_shapely(self) -> Polygon:
         """Convert to Shapely Polygon."""
         return Polygon(self.geo_polygon)
+
+    def to_geojson_feature(self) -> Dict:
+        """Convert to GeoJSON Feature.
+
+        Returns:
+            GeoJSON Feature dict
+        """
+        return {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [self.geo_polygon],
+            },
+            "properties": {
+                "feature_type": "osm_building",
+                "detection_type": "osm_building",
+                "osm_id": self.osm_id,
+                "building_type": self.building_type or "yes",
+                "area_sqm": self.area_sqm,
+                "source": "openstreetmap",
+            },
+        }
 
 
 @dataclass
@@ -60,15 +84,25 @@ class OSMDataFetcher:
 
     OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 
-    def __init__(self, timeout: int = 25, buffer_meters: float = 50.0):
+    def __init__(
+        self,
+        timeout: int = 25,
+        buffer_meters: float = 50.0,
+        max_retries: int = 5,
+        initial_backoff: float = 2.0,
+    ):
         """Initialize OSM data fetcher.
 
         Args:
             timeout: Overpass API timeout in seconds
             buffer_meters: Buffer distance around image bounds for fetching data
+            max_retries: Maximum number of retry attempts (default: 5)
+            initial_backoff: Initial backoff delay in seconds (default: 2.0)
         """
         self.timeout = timeout
         self.buffer_meters = buffer_meters
+        self.max_retries = max_retries
+        self.initial_backoff = initial_backoff
 
     def fetch_buildings_and_roads(
         self,
@@ -170,10 +204,105 @@ class OSMDataFetcher:
 
         return (south_lat, west_lon, north_lat, east_lon)
 
+    def _retry_request(self, request_func, resource_name: str):
+        """Retry request with exponential backoff and jitter.
+
+        Best practices:
+        - Retry on timeouts and 5xx server errors
+        - Don't retry on 4xx client errors (bad request, not found, etc.)
+        - Exponential backoff: 2s, 4s, 8s, 16s, 32s
+        - Add jitter to prevent thundering herd
+
+        Args:
+            request_func: Function that makes the HTTP request (no args)
+            resource_name: Name of resource for logging (e.g., "buildings", "roads")
+
+        Returns:
+            Response data dict on success, empty dict on failure
+
+        Raises:
+            Does not raise - returns empty dict on all failures
+        """
+        for attempt in range(self.max_retries):
+            try:
+                response = request_func()
+                response.raise_for_status()
+                return response.json()
+
+            except requests.exceptions.Timeout as e:
+                # Retry on timeout
+                if attempt < self.max_retries - 1:
+                    delay = self.initial_backoff * (2**attempt)
+                    jitter = random.uniform(0, delay * 0.1)
+                    total_delay = delay + jitter
+                    print(
+                        f"OSM {resource_name} fetch timeout (attempt {attempt + 1}/{self.max_retries}). "
+                        f"Retrying in {total_delay:.1f}s..."
+                    )
+                    time.sleep(total_delay)
+                else:
+                    print(
+                        f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                    )
+                    return {}
+
+            except requests.exceptions.HTTPError as e:
+                # Check if it's a server error (5xx) - retry
+                # Client errors (4xx) - don't retry
+                if e.response.status_code >= 500:
+                    if attempt < self.max_retries - 1:
+                        delay = self.initial_backoff * (2**attempt)
+                        jitter = random.uniform(0, delay * 0.1)
+                        total_delay = delay + jitter
+                        print(
+                            f"OSM {resource_name} fetch error {e.response.status_code} "
+                            f"(attempt {attempt + 1}/{self.max_retries}). "
+                            f"Retrying in {total_delay:.1f}s..."
+                        )
+                        time.sleep(total_delay)
+                    else:
+                        print(
+                            f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                        )
+                        return {}
+                else:
+                    # 4xx error - don't retry
+                    print(
+                        f"Warning: OSM {resource_name} fetch failed (client error): {e}"
+                    )
+                    return {}
+
+            except requests.exceptions.RequestException as e:
+                # Other connection errors - retry
+                if attempt < self.max_retries - 1:
+                    delay = self.initial_backoff * (2**attempt)
+                    jitter = random.uniform(0, delay * 0.1)
+                    total_delay = delay + jitter
+                    print(
+                        f"OSM {resource_name} fetch connection error "
+                        f"(attempt {attempt + 1}/{self.max_retries}). "
+                        f"Retrying in {total_delay:.1f}s..."
+                    )
+                    time.sleep(total_delay)
+                else:
+                    print(
+                        f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                    )
+                    return {}
+
+            except Exception as e:
+                # Unexpected error - log and return empty
+                print(
+                    f"Warning: OSM {resource_name} fetch failed with unexpected error: {e}"
+                )
+                return {}
+
+        return {}
+
     def _fetch_buildings(
         self, bbox: Tuple[float, float, float, float]
     ) -> List[OSMBuilding]:
-        """Fetch building footprints from OSM.
+        """Fetch building footprints from OSM with retry logic.
 
         Args:
             bbox: Bounding box (south, west, north, east)
@@ -193,16 +322,16 @@ class OSMDataFetcher:
         out geom;
         """
 
-        try:
-            response = requests.post(
+        # Define request function for retry logic
+        def make_request():
+            return requests.post(
                 self.OVERPASS_ENDPOINT, data={"data": query}, timeout=self.timeout
             )
-            response.raise_for_status()
-            data = response.json()
-        except Exception as e:
-            print(f"Warning: OSM building fetch failed: {e}")
-            return []
 
+        # Use retry logic
+        data = self._retry_request(make_request, "buildings")
+
+        # Parse buildings
         buildings = []
         for element in data.get("elements", []):
             building = self._parse_building_element(element)
@@ -213,7 +342,7 @@ class OSMDataFetcher:
         return buildings
 
     def _fetch_roads(self, bbox: Tuple[float, float, float, float]) -> List[OSMRoad]:
-        """Fetch roads and driveways from OSM.
+        """Fetch roads and driveways from OSM with retry logic.
 
         Args:
             bbox: Bounding box (south, west, north, east)
@@ -232,16 +361,16 @@ class OSMDataFetcher:
         out geom;
         """
 
-        try:
-            response = requests.post(
+        # Define request function for retry logic
+        def make_request():
+            return requests.post(
                 self.OVERPASS_ENDPOINT, data={"data": query}, timeout=self.timeout
             )
-            response.raise_for_status()
-            data = response.json()
-        except Exception as e:
-            print(f"Warning: OSM road fetch failed: {e}")
-            return []
 
+        # Use retry logic
+        data = self._retry_request(make_request, "roads")
+
+        # Parse roads
         roads = []
         for element in data.get("elements", []):
             road = self._parse_road_element(element)

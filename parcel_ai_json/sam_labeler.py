@@ -213,6 +213,29 @@ class SAMSegmentLabeler:
         self.containment_threshold = containment_threshold
         self.osm_overlap_threshold = osm_overlap_threshold
         self.use_osm = use_osm
+        self._last_osm_data = None  # Store last fetched OSM data
+
+    @property
+    def last_osm_buildings(self) -> List:
+        """Get OSM buildings from last labeling run.
+
+        Returns:
+            List of OSMBuilding objects, or empty list if none available
+        """
+        if self._last_osm_data:
+            return self._last_osm_data.get("buildings", [])
+        return []
+
+    @property
+    def last_osm_roads(self) -> List:
+        """Get OSM roads from last labeling run.
+
+        Returns:
+            List of OSMRoad objects, or empty list if none available
+        """
+        if self._last_osm_data:
+            return self._last_osm_data.get("roads", [])
+        return []
 
     def label_segments(
         self,
@@ -244,6 +267,7 @@ class SAMSegmentLabeler:
         osm_data = None
         if self.use_osm and satellite_image:
             osm_data = self._fetch_osm_data(satellite_image)
+            self._last_osm_data = osm_data  # Store for later retrieval
 
         labeled_segments = []
 
@@ -365,7 +389,7 @@ class SAMSegmentLabeler:
                     "label": "amenity",
                     "confidence": iou,
                     "source": "overlap",
-                    "subtype": amenity.class_name,
+                    "subtype": amenity.amenity_type,
                     "reason": f"overlap_iou_{iou:.2f}",
                     "related_ids": [f"amenity_{i}"],
                 }

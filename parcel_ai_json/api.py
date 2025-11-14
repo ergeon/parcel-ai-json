@@ -197,13 +197,19 @@ async def detect_property(
 
                 # Debug logging for fence detection
                 if isinstance(parcel_polygon, dict):
-                    logger.info(f"Parcel polygon type: dict with keys {list(parcel_polygon.keys())}")
+                    logger.info(
+                        f"Parcel polygon type: dict with keys {list(parcel_polygon.keys())}"
+                    )
                     coords = parcel_polygon.get("coordinates", [[]])[0]
                     logger.info(f"Parcel polygon coordinates: {len(coords)} points")
                 elif isinstance(parcel_polygon, list):
-                    logger.info(f"Parcel polygon type: list with {len(parcel_polygon)} points")
+                    logger.info(
+                        f"Parcel polygon type: list with {len(parcel_polygon)} points"
+                    )
                 else:
-                    logger.warning(f"Unexpected parcel polygon type: {type(parcel_polygon)}")
+                    logger.warning(
+                        f"Unexpected parcel polygon type: {type(parcel_polygon)}"
+                    )
 
             except json.JSONDecodeError as e:
                 raise HTTPException(

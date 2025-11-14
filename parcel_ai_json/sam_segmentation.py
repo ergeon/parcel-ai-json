@@ -368,7 +368,7 @@ class SAMSegmentationService:
         detections: Dict,
         overlap_threshold: float = 0.5,
         use_osm: bool = True,
-    ) -> List:
+    ) -> Dict:
         """Run segmentation and label segments using detection overlap and OSM data.
 
         Args:
@@ -383,7 +383,10 @@ class SAMSegmentationService:
             use_osm: Whether to fetch and use OSM data (default: True)
 
         Returns:
-            List of LabeledSAMSegment objects
+            Dict with keys:
+                - 'labeled_segments': List of LabeledSAMSegment objects
+                - 'osm_buildings': List of OSMBuilding objects (if use_osm=True)
+                - 'osm_roads': List of OSMRoad objects (if use_osm=True)
         """
         from parcel_ai_json.sam_labeler import SAMSegmentLabeler
         from PIL import Image
@@ -418,10 +421,19 @@ class SAMSegmentationService:
             f"with semantic labels"
         )
 
-        return labeled_segments
+        # Return dict with labeled segments and OSM data
+        return {
+            "labeled_segments": labeled_segments,
+            "osm_buildings": labeler.last_osm_buildings,
+            "osm_roads": labeler.last_osm_roads,
+        }
 
     def segment_image_labeled_geojson(
-        self, satellite_image: Dict, detections: Dict, overlap_threshold: float = 0.5
+        self,
+        satellite_image: Dict,
+        detections: Dict,
+        overlap_threshold: float = 0.5,
+        use_osm: bool = True,
     ) -> Dict:
         """Run segmentation with labeling and return GeoJSON.
 
@@ -429,15 +441,27 @@ class SAMSegmentationService:
             satellite_image: Same as segment_image_labeled()
             detections: Same as segment_image_labeled()
             overlap_threshold: IoU threshold for overlap labeling
+            use_osm: Whether to fetch and use OSM data (default: True)
 
         Returns:
-            GeoJSON FeatureCollection with labeled segments
+            GeoJSON FeatureCollection with labeled segments and OSM buildings
         """
-        labeled_segments = self.segment_image_labeled(
-            satellite_image, detections, overlap_threshold
+        result = self.segment_image_labeled(
+            satellite_image, detections, overlap_threshold, use_osm=use_osm
         )
+
+        # Extract labeled segments and OSM data
+        labeled_segments = result["labeled_segments"]
+        osm_buildings = result.get("osm_buildings", [])
+
+        # Create feature list with labeled segments
+        features = [seg.to_geojson_feature() for seg in labeled_segments]
+
+        # Add OSM building features
+        for building in osm_buildings:
+            features.append(building.to_geojson_feature())
 
         return {
             "type": "FeatureCollection",
-            "features": [seg.to_geojson_feature() for seg in labeled_segments],
+            "features": features,
         }

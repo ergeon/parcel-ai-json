@@ -9,7 +9,7 @@ Detects all property features in a single call:
 Uses YOLOv8-OBB model trained on DOTA aerial dataset.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union, Tuple
 from dataclasses import dataclass
 import numpy as np
 
@@ -215,6 +215,7 @@ class PropertyDetectionService:
         self,
         satellite_image: Dict,
         detect_fences: bool = False,
+        regrid_parcel_polygon: Optional[Union[List[Tuple[float, float]], Dict]] = None,
         fence_probability_mask: Optional[np.ndarray] = None,
     ) -> PropertyDetections:
         """Detect all property features in satellite image.
@@ -226,8 +227,14 @@ class PropertyDetectionService:
                 - center_lon: Center longitude (WGS84)
                 - zoom_level: Optional zoom level (default 20)
             detect_fences: Whether to run fence detection (default: False)
-            fence_probability_mask: Optional fence probability mask from Regrid
-                                   Shape: (512, 512), dtype: uint8 (0-255)
+            regrid_parcel_polygon: Optional Regrid parcel polygon to generate
+                fence probability mask. Can be either:
+                - List of (lon, lat) tuples defining parcel boundary
+                - GeoJSON polygon dict with 'coordinates' key
+                If provided, takes precedence over fence_probability_mask.
+            fence_probability_mask: Optional pre-computed fence probability mask
+                Shape: (512, 512), dtype: uint8 (0-255) or float32 (0-1)
+                Only used if regrid_parcel_polygon is None.
 
         Returns:
             PropertyDetections object with vehicles, pools, amenities,
@@ -243,7 +250,9 @@ class PropertyDetectionService:
         fences = None
         if detect_fences:
             fences = self.fence_detector.detect_fences(
-                satellite_image, fence_probability_mask
+                satellite_image,
+                regrid_parcel_polygon=regrid_parcel_polygon,
+                fence_probability_mask=fence_probability_mask,
             )
 
         return PropertyDetections(
