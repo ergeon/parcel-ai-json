@@ -50,7 +50,7 @@ def fetch_google_satellite_image(lat, lon, zoom, output_path, width=640, height=
     return output_path
 
 
-def detect_via_api(image_path, lat, lon, zoom=20):
+def detect_via_api(image_path, lat, lon, zoom=20, regrid_parcel_polygon_path=None):
     """Run detection via Docker REST API."""
     # Check if API is available
     health_url = f"{API_BASE_URL}/health"
@@ -68,6 +68,7 @@ def detect_via_api(image_path, lat, lon, zoom=20):
 
     with open(image_path, "rb") as f:
         files = {"image": ("image.jpg", f, "image/jpeg")}
+
         data = {
             "center_lat": lat,
             "center_lon": lon,
@@ -75,14 +76,24 @@ def detect_via_api(image_path, lat, lon, zoom=20):
             "format": "geojson",
             "include_sam": "true",  # Include SAM segmentation
             "sam_points_per_side": 32,
+            "detect_fences": "false",
         }
+
+        # Add Regrid parcel polygon if provided
+        if regrid_parcel_polygon_path and os.path.exists(regrid_parcel_polygon_path):
+            import json
+
+            with open(regrid_parcel_polygon_path, "r") as parcel_file:
+                parcel_data = json.load(parcel_file)
+            data["regrid_parcel_polygon"] = json.dumps(parcel_data)
+            data["detect_fences"] = "true"
+            print(f"  Including Regrid parcel polygon: {regrid_parcel_polygon_path}")
 
         print(f"  Calling API: {detect_url}")
         print("  (This may take 5-10 minutes for first request with SAM...)")
         response = requests.post(detect_url, files=files, data=data, timeout=600)
         response.raise_for_status()
-
-    return response.json()
+        return response.json()
 
 
 def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_path):
@@ -140,7 +151,10 @@ def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_p
     pool_group = folium.FeatureGroup(name="🏊 Swimming Pools", show=True)
     amenity_group = folium.FeatureGroup(name="🎾 Amenities", show=True)
     tree_group = folium.FeatureGroup(name="🌳 Trees", show=True)
+    fence_group = folium.FeatureGroup(name="🚧 Fences", show=True)
     sam_group = folium.FeatureGroup(name="🔷 SAM Segments", show=True)
+    osm_buildings_group = folium.FeatureGroup(name="🏢 OSM Buildings", show=True)
+    regrid_parcel_group = folium.FeatureGroup(name="📐 Regrid Parcel", show=True)
 
     # Add detections
     for feature in geojson_data["features"]:
@@ -203,6 +217,27 @@ def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_p
                 popup=folium.Popup(popup_html, max_width=200),
             ).add_to(tree_group)
 
+        elif feature_type == "fence":
+            max_probability = props.get("max_probability", 0.0)
+            mean_probability = props.get("mean_probability", 0.0)
+            threshold = props.get("threshold", 0.1)
+            segment_id = props.get("segment_id", 0)
+            popup_html = (
+                f"<b>Fence Segment #{segment_id}</b><br>"
+                f"Max Prob: {max_probability:.2f}<br>"
+                f"Mean Prob: {mean_probability:.2f}<br>"
+                f"Threshold: {threshold:.2f}"
+            )
+            folium.Polygon(
+                locations=coords_swapped,
+                color="#FF6B35",
+                fill=True,
+                fillColor="#FF6B35",
+                fillOpacity=0.5,
+                weight=2,
+                popup=folium.Popup(popup_html, max_width=200),
+            ).add_to(fence_group)
+
         elif feature_type == "labeled_sam_segment":
             label = props.get("primary_label", "unknown")
             segment_id = props.get("segment_id", "N/A")
@@ -226,12 +261,50 @@ def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_p
                 popup=folium.Popup(popup_html, max_width=250),
             ).add_to(sam_group)
 
+        elif feature_type == "osm_building":
+            building_type = props.get("building_type", "yes")
+            area = props.get("area_sqm", 0)
+            osm_id = props.get("osm_id", "unknown")
+
+            popup_html = (
+                f"<b>OSM Building</b><br>"
+                f"Type: {building_type}<br>"
+                f"Area: {area:.1f} m²<br>"
+                f"OSM ID: {osm_id}"
+            )
+            folium.Polygon(
+                locations=coords_swapped,
+                color="#FFA500",  # Orange
+                fill=True,
+                fillColor="#FFA500",
+                fillOpacity=0.3,
+                weight=2,
+                popup=folium.Popup(popup_html, max_width=200),
+                tooltip=f"OSM: {building_type}",
+            ).add_to(osm_buildings_group)
+
+        elif feature_type == "regrid_parcel":
+            source = props.get("source", "regrid")
+            popup_html = f"<b>Regrid Parcel</b><br>Source: {source}"
+            folium.Polygon(
+                locations=coords_swapped,
+                color="#FF00FF",  # Magenta
+                fill=False,
+                weight=3,
+                opacity=0.8,
+                popup=folium.Popup(popup_html, max_width=200),
+                tooltip="Regrid Parcel",
+            ).add_to(regrid_parcel_group)
+
     # Add feature groups to map
     vehicle_group.add_to(m)
     pool_group.add_to(m)
     amenity_group.add_to(m)
     tree_group.add_to(m)
+    fence_group.add_to(m)
     sam_group.add_to(m)
+    osm_buildings_group.add_to(m)
+    regrid_parcel_group.add_to(m)
 
     # Add layer control
     folium.LayerControl().add_to(m)
@@ -241,7 +314,7 @@ def create_folium_map(image_path, geojson_data, center_lat, center_lon, output_p
     return m
 
 
-def generate_for_address(address, lat, lon, zoom=20):
+def generate_for_address(address, lat, lon, zoom=20, regrid_parcel_polygon_path=None):
     """Generate detections and folium map for address using Docker API."""
     filename = address.lower().replace(" ", "_").replace(",", "")
 
@@ -272,7 +345,7 @@ def generate_for_address(address, lat, lon, zoom=20):
     # Step 2: Run detections via Docker API
     print("\nStep 2: Running detections via Docker REST API...")
     try:
-        geojson = detect_via_api(image_path, lat, lon, zoom)
+        geojson = detect_via_api(image_path, lat, lon, zoom, regrid_parcel_polygon_path)
         vehicle_count = sum(
             1
             for f in geojson.get("features", [])
@@ -288,10 +361,17 @@ def generate_for_address(address, lat, lon, zoom=20):
             for f in geojson.get("features", [])
             if f["properties"].get("feature_type") == "amenity"
         )
+        fence_count = sum(
+            1
+            for f in geojson.get("features", [])
+            if f["properties"].get("feature_type") == "fence"
+        )
 
         print(f"✓ Detected {vehicle_count} vehicles")
         print(f"✓ Detected {pool_count} pools")
         print(f"✓ Detected {amenity_count} amenities")
+        if regrid_parcel_polygon_path:
+            print(f"✓ Detected {fence_count} fence segments")
 
     except Exception as e:
         print(f"ERROR: {e}")
@@ -352,9 +432,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--zoom", type=int, default=20, help="Google Maps zoom level (default: 20)"
     )
+    parser.add_argument(
+        "--regrid-parcel-polygon",
+        type=str,
+        default=None,
+        help="Path to Regrid parcel polygon JSON file (optional, for fence detection)",
+    )
 
     args = parser.parse_args()
 
     generate_for_address(
-        address=args.address, lat=args.lat, lon=args.lon, zoom=args.zoom
+        address=args.address,
+        lat=args.lat,
+        lon=args.lon,
+        zoom=args.zoom,
+        regrid_parcel_polygon_path=args.regrid_parcel_polygon,
     )

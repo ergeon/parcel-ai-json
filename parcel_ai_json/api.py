@@ -4,6 +4,7 @@ Provides HTTP endpoints for detecting vehicles, pools, amenities, and trees
 in satellite imagery.
 """
 
+from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import tempfile
@@ -120,9 +121,9 @@ async def detect_property(
     detect_fences: bool = Form(
         False, description="Include fence detection (default: False)"
     ),
-    fence_mask: UploadFile = File(
+    regrid_parcel_polygon: Optional[str] = Form(
         None,
-        description="Optional fence probability mask from Regrid (512x512 PNG/NPY)",
+        description="Optional Regrid parcel polygon as JSON string (for fence detection)",
     ),
 ):
     """Detect all property features in satellite image.
@@ -137,7 +138,7 @@ async def detect_property(
         sam_points_per_side: SAM grid sampling density (default: 32)
         label_sam_segments: Label SAM segments with semantic labels (default: True)
         detect_fences: Include fence detection (default: False)
-        fence_mask: Optional fence probability mask from Regrid (512x512 PNG/NPY)
+        regrid_parcel_polygon: Optional Regrid parcel polygon as JSON string
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
@@ -185,26 +186,30 @@ async def detect_property(
 
         logger.info(f"Saved uploaded image to {image_path}")
 
-        # Process fence mask if provided
-        fence_probability_mask = None
-        if detect_fences and fence_mask is not None:
-            import numpy as np
-            from PIL import Image
+        # Parse Regrid parcel polygon if provided
+        parcel_polygon = None
+        if detect_fences and regrid_parcel_polygon is not None:
+            import json
 
-            fence_mask_path = temp_dir / fence_mask.filename
-            with open(fence_mask_path, "wb") as f:
-                shutil.copyfileobj(fence_mask.file, f)
+            try:
+                parcel_polygon = json.loads(regrid_parcel_polygon)
+                logger.info(f"Parsed Regrid parcel polygon from JSON")
 
-            # Load fence mask (supports PNG or NPY)
-            if fence_mask.filename.endswith(".npy"):
-                fence_probability_mask = np.load(fence_mask_path)
-            else:
-                fence_img = Image.open(fence_mask_path).convert("L")
-                fence_probability_mask = np.array(fence_img)
+                # Debug logging for fence detection
+                if isinstance(parcel_polygon, dict):
+                    logger.info(f"Parcel polygon type: dict with keys {list(parcel_polygon.keys())}")
+                    coords = parcel_polygon.get("coordinates", [[]])[0]
+                    logger.info(f"Parcel polygon coordinates: {len(coords)} points")
+                elif isinstance(parcel_polygon, list):
+                    logger.info(f"Parcel polygon type: list with {len(parcel_polygon)} points")
+                else:
+                    logger.warning(f"Unexpected parcel polygon type: {type(parcel_polygon)}")
 
-            logger.info(
-                f"Loaded fence probability mask: {fence_probability_mask.shape}"
-            )
+            except json.JSONDecodeError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid JSON in regrid_parcel_polygon: {e}",
+                )
 
         # Prepare satellite image metadata
         satellite_image = {
@@ -222,7 +227,7 @@ async def detect_property(
             detections = detector.detect_all(
                 satellite_image,
                 detect_fences=detect_fences,
-                fence_probability_mask=fence_probability_mask,
+                regrid_parcel_polygon=parcel_polygon,
             )
             summary = detections.summary()
 
@@ -241,7 +246,7 @@ async def detect_property(
             detections = detector.detect_all(
                 satellite_image,
                 detect_fences=detect_fences,
-                fence_probability_mask=fence_probability_mask,
+                regrid_parcel_polygon=parcel_polygon,
             )
             geojson = detections.to_geojson()
 
@@ -299,6 +304,51 @@ async def detect_property(
                 logger.info(
                     f"SAM segmentation complete: {len(sam_segments)} segments added"
                 )
+
+                # Add OSM buildings to GeoJSON output if they were fetched
+                if label_sam_segments and labeler:
+                    osm_buildings = labeler.last_osm_buildings
+                    if osm_buildings:
+                        for building in osm_buildings:
+                            geojson["features"].append(building.to_geojson_feature())
+                        logger.info(
+                            f"Added {len(osm_buildings)} OSM buildings to GeoJSON output"
+                        )
+
+            # Add regrid parcel polygon to GeoJSON output if provided
+            if parcel_polygon is not None:
+                # Handle different formats: Feature, Geometry, or plain coordinate list
+                if isinstance(parcel_polygon, dict):
+                    if parcel_polygon.get("type") == "Feature":
+                        # Extract geometry from Feature
+                        geojson_geometry = parcel_polygon.get("geometry", {})
+                    elif "type" in parcel_polygon and "coordinates" in parcel_polygon:
+                        # Already a GeoJSON geometry (Polygon, etc.)
+                        geojson_geometry = parcel_polygon
+                    else:
+                        # Unknown dict format, try to use as-is
+                        geojson_geometry = parcel_polygon
+                else:
+                    # Convert coordinate list to GeoJSON Polygon
+                    # Ensure coordinates are in nested list format: [[[lon, lat], ...]]
+                    coords = parcel_polygon if isinstance(parcel_polygon, list) else []
+                    geojson_geometry = {
+                        "type": "Polygon",
+                        "coordinates": [coords] if coords else [[]],
+                    }
+
+                geojson["features"].append(
+                    {
+                        "type": "Feature",
+                        "geometry": geojson_geometry,
+                        "properties": {
+                            "feature_type": "regrid_parcel",
+                            "detection_type": "regrid_parcel",
+                            "source": "regrid",
+                        },
+                    }
+                )
+                logger.info("Added Regrid parcel polygon to GeoJSON output")
 
             logger.info(
                 f"Detection complete: {len(geojson['features'])} total features"
