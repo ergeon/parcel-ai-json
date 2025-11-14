@@ -4,12 +4,14 @@ Detects all property features in a single call:
 - Vehicles (cars, trucks, etc.)
 - Swimming pools
 - Amenities (tennis courts, basketball courts, etc.)
+- Fences (HED model with Regrid data)
 
 Uses YOLOv8-OBB model trained on DOTA aerial dataset.
 """
 
 from typing import List, Dict, Optional
 from dataclasses import dataclass
+import numpy as np
 
 from parcel_ai_json.vehicle_detector import VehicleDetectionService, VehicleDetection
 from parcel_ai_json.swimming_pool_detector import (
@@ -18,6 +20,7 @@ from parcel_ai_json.swimming_pool_detector import (
 )
 from parcel_ai_json.amenity_detector import AmenityDetectionService, AmenityDetection
 from parcel_ai_json.tree_detector import TreeDetectionService, TreeDetection
+from parcel_ai_json.fence_detector import FenceDetectionService, FenceDetection
 
 
 @dataclass
@@ -28,6 +31,7 @@ class PropertyDetections:
     swimming_pools: List[SwimmingPoolDetection]
     amenities: List[AmenityDetection]
     trees: TreeDetection
+    fences: Optional[FenceDetection] = None
 
     def to_geojson(self) -> Dict:
         """Convert all detections to GeoJSON FeatureCollection."""
@@ -53,6 +57,11 @@ class PropertyDetections:
         if self.trees.tree_polygons:
             for polygon in self.trees.tree_polygons:
                 features.append(polygon.to_geojson_feature())
+
+        # Add fence features
+        if self.fences:
+            for fence_feature in self.fences.to_geojson_features():
+                features.append(fence_feature)
 
         # Add tree detection metadata
         tree_metadata = {
@@ -121,6 +130,11 @@ class PropertyDetections:
         if hasattr(self.trees, "tree_polygons") and self.trees.tree_polygons:
             summary["tree_polygon_count"] = len(self.trees.tree_polygons)
 
+        # Add fence statistics if available
+        if self.fences:
+            summary["fence_pixel_count"] = self.fences.fence_pixel_count
+            summary["fence_segment_count"] = len(self.fences.geo_polygons)
+
         return summary
 
 
@@ -144,6 +158,7 @@ class PropertyDetectionService:
         detectree_min_tree_area_pixels: int = 50,
         detectree_simplify_tolerance_meters: float = 0.5,
         detectree_use_docker: bool = True,
+        fence_threshold: float = 0.1,
     ):
         """Initialize property detection service.
 
@@ -159,6 +174,7 @@ class PropertyDetectionService:
             detectree_min_tree_area_pixels: Min tree area (pixels)
             detectree_simplify_tolerance_meters: Simplification (meters)
             detectree_use_docker: Run detectree in Docker or natively
+            fence_threshold: Probability threshold for fence detection (0.0-1.0)
         """
         # Initialize individual detectors
         self.vehicle_detector = VehicleDetectionService(
@@ -189,7 +205,18 @@ class PropertyDetectionService:
             detectree_use_docker=detectree_use_docker,
         )
 
-    def detect_all(self, satellite_image: Dict) -> PropertyDetections:
+        # Fence detection (HED model)
+        self.fence_detector = FenceDetectionService(
+            threshold=fence_threshold,
+            device=device,
+        )
+
+    def detect_all(
+        self,
+        satellite_image: Dict,
+        detect_fences: bool = False,
+        fence_probability_mask: Optional[np.ndarray] = None,
+    ) -> PropertyDetections:
         """Detect all property features in satellite image.
 
         Args:
@@ -198,9 +225,13 @@ class PropertyDetectionService:
                 - center_lat: Center latitude (WGS84)
                 - center_lon: Center longitude (WGS84)
                 - zoom_level: Optional zoom level (default 20)
+            detect_fences: Whether to run fence detection (default: False)
+            fence_probability_mask: Optional fence probability mask from Regrid
+                                   Shape: (512, 512), dtype: uint8 (0-255)
 
         Returns:
-            PropertyDetections object with vehicles, pools, amenities, and trees
+            PropertyDetections object with vehicles, pools, amenities,
+                trees, and optionally fences
         """
         # Detect all features
         vehicles = self.vehicle_detector.detect_vehicles(satellite_image)
@@ -208,8 +239,19 @@ class PropertyDetectionService:
         amenities = self.amenity_detector.detect_amenities(satellite_image)
         trees = self.tree_detector.detect_trees(satellite_image)
 
+        # Optionally detect fences
+        fences = None
+        if detect_fences:
+            fences = self.fence_detector.detect_fences(
+                satellite_image, fence_probability_mask
+            )
+
         return PropertyDetections(
-            vehicles=vehicles, swimming_pools=pools, amenities=amenities, trees=trees
+            vehicles=vehicles,
+            swimming_pools=pools,
+            amenities=amenities,
+            trees=trees,
+            fences=fences,
         )
 
     def detect_all_geojson(self, satellite_image: Dict) -> Dict:

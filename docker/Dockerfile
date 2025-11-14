@@ -66,6 +66,10 @@ RUN mkdir -p /root/.ultralytics && \
 RUN echo "SAM models available at /app/models/:" && \
     ls -lh /app/models/sam_vit_*.pth
 
+# Verify HED fence detection model is available
+RUN echo "HED fence model available at /app/models/:" && \
+    ls -lh /app/models/hed_fence_checkpoint_best.pth
+
 # Pre-download detectree model data
 RUN python -c "\
 import detectree as dtr; \

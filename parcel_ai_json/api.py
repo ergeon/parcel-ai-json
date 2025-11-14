@@ -116,6 +116,13 @@ async def detect_property(
     label_sam_segments: bool = Form(
         True, description="Label SAM segments with semantic labels (default: True)"
     ),
+    detect_fences: bool = Form(
+        False, description="Include fence detection (default: False)"
+    ),
+    fence_mask: UploadFile = File(
+        None,
+        description="Optional fence probability mask from Regrid (512x512 PNG/NPY)",
+    ),
 ):
     """Detect all property features in satellite image.
 
@@ -128,13 +135,16 @@ async def detect_property(
         include_sam: Include SAM segmentation (default: False)
         sam_points_per_side: SAM grid sampling density (default: 32)
         label_sam_segments: Label SAM segments with semantic labels (default: True)
+        detect_fences: Include fence detection (default: False)
+        fence_mask: Optional fence probability mask from Regrid (512x512 PNG/NPY)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
     """
     logger.info(
         f"Processing detection request: lat={center_lat}, lon={center_lon}, "
-        f"zoom={zoom_level}, format={format}, include_sam={include_sam}"
+        f"zoom={zoom_level}, format={format}, include_sam={include_sam}, "
+        f"detect_fences={detect_fences}"
     )
 
     # Validate inputs
@@ -174,6 +184,27 @@ async def detect_property(
 
         logger.info(f"Saved uploaded image to {image_path}")
 
+        # Process fence mask if provided
+        fence_probability_mask = None
+        if detect_fences and fence_mask is not None:
+            import numpy as np
+            from PIL import Image
+
+            fence_mask_path = temp_dir / fence_mask.filename
+            with open(fence_mask_path, "wb") as f:
+                shutil.copyfileobj(fence_mask.file, f)
+
+            # Load fence mask (supports PNG or NPY)
+            if fence_mask.filename.endswith(".npy"):
+                fence_probability_mask = np.load(fence_mask_path)
+            else:
+                fence_img = Image.open(fence_mask_path).convert("L")
+                fence_probability_mask = np.array(fence_img)
+
+            logger.info(
+                f"Loaded fence probability mask: {fence_probability_mask.shape}"
+            )
+
         # Prepare satellite image metadata
         satellite_image = {
             "path": str(image_path),
@@ -187,7 +218,11 @@ async def detect_property(
 
         if format == "summary":
             # Return summary statistics only
-            detections = detector.detect_all(satellite_image)
+            detections = detector.detect_all(
+                satellite_image,
+                detect_fences=detect_fences,
+                fence_probability_mask=fence_probability_mask,
+            )
             summary = detections.summary()
 
             # Add SAM segment count if requested
@@ -202,7 +237,12 @@ async def detect_property(
             return JSONResponse(content=summary)
         else:
             # Return full GeoJSON
-            geojson = detector.detect_all_geojson(satellite_image)
+            detections = detector.detect_all(
+                satellite_image,
+                detect_fences=detect_fences,
+                fence_probability_mask=fence_probability_mask,
+            )
+            geojson = detections.to_geojson()
 
             # Add SAM segments if requested
             if include_sam:
@@ -219,10 +259,6 @@ async def detect_property(
                 # Label SAM segments if requested
                 if label_sam_segments:
                     logger.info("Labeling SAM segments with semantic labels...")
-                    from parcel_ai_json.sam_labeler import SAMSegmentLabeler
-
-                    # Get detections for labeling
-                    detections = detector.detect_all(satellite_image)
 
                     # Create detection dictionary
                     detection_dict = {
@@ -238,7 +274,7 @@ async def detect_property(
                     }
 
                     # Label segments (with OSM buildings support)
-                    labeler = SAMSegmentLabeler(
+                    labeler = SAMSegmentLabeler(  # noqa: F821
                         overlap_threshold=0.3, osm_overlap_threshold=0.5, use_osm=True
                     )
                     sam_segments = labeler.label_segments(
@@ -376,9 +412,7 @@ async def detect_amenities(
     zoom_level: int = Form(20),
 ):
     """Detect only amenities (tennis/basketball courts, etc.)."""
-    logger.info(
-        f"Processing amenity detection: lat={center_lat}, lon={center_lon}"
-    )
+    logger.info(f"Processing amenity detection: lat={center_lat}, lon={center_lon}")
 
     temp_dir = None
     try:
@@ -452,6 +486,99 @@ async def detect_trees(
     except Exception as e:
         logger.error(f"Tree detection failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Tree detection failed: {str(e)}")
+
+    finally:
+        if temp_dir and temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@app.post("/detect/fences")
+async def detect_fences(
+    image: UploadFile = File(..., description="Satellite image file (JPEG/PNG)"),
+    center_lat: float = Form(..., description="Image center latitude (WGS84)"),
+    center_lon: float = Form(..., description="Image center longitude (WGS84)"),
+    zoom_level: int = Form(20, description="Zoom level (default: 20)"),
+    fence_mask: UploadFile = File(
+        None,
+        description="Optional fence probability mask from Regrid (512x512 PNG/NPY)",
+    ),
+    threshold: float = Form(0.1, description="Probability threshold (default: 0.1)"),
+):
+    """Detect fences in satellite image using HED model.
+
+    Args:
+        image: Satellite image file (JPEG or PNG)
+        center_lat: Center latitude of image (WGS84)
+        center_lon: Center longitude of image (WGS84)
+        zoom_level: Zoom level (default: 20)
+        fence_mask: Optional fence probability mask from Regrid (512x512 PNG/NPY)
+        threshold: Probability threshold for fence detection (default: 0.1)
+
+    Returns:
+        GeoJSON FeatureCollection with fence polygon features
+    """
+    logger.info(f"Processing fence detection: lat={center_lat}, lon={center_lon}")
+
+    temp_dir = None
+    try:
+        temp_dir = Path(tempfile.mkdtemp())
+        image_path = temp_dir / image.filename
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(image.file, f)
+
+        # Process fence mask if provided
+        fence_probability_mask = None
+        if fence_mask is not None:
+            import numpy as np
+            from PIL import Image
+
+            fence_mask_path = temp_dir / fence_mask.filename
+            with open(fence_mask_path, "wb") as f:
+                shutil.copyfileobj(fence_mask.file, f)
+
+            # Load fence mask (supports PNG or NPY)
+            if fence_mask.filename.endswith(".npy"):
+                fence_probability_mask = np.load(fence_mask_path)
+            else:
+                fence_img = Image.open(fence_mask_path).convert("L")
+                fence_probability_mask = np.array(fence_img)
+
+            logger.info(
+                f"Loaded fence probability mask: {fence_probability_mask.shape}"
+            )
+
+        satellite_image = {
+            "path": str(image_path),
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "zoom_level": zoom_level,
+        }
+
+        detector = get_detector()
+
+        # Update fence detector threshold if different from default
+        if threshold != detector.fence_detector.threshold:
+            detector.fence_detector.threshold = threshold
+            logger.info(f"Updated fence detection threshold to {threshold}")
+
+        fences = detector.fence_detector.detect_fences(
+            satellite_image, fence_probability_mask
+        )
+
+        # Convert to GeoJSON
+        geojson = fences.to_geojson_features() if fences.geo_polygons else []
+        result = {
+            "type": "FeatureCollection",
+            "features": geojson,
+            "metadata": fences.to_dict(),
+        }
+
+        logger.info(f"Found {len(fences.geo_polygons)} fence segments")
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        logger.error(f"Fence detection failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fence detection failed: {str(e)}")
 
     finally:
         if temp_dir and temp_dir.exists():

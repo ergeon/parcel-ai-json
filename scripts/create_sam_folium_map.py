@@ -130,10 +130,12 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     amenities = []
     trees_deepforest = []
     trees_detectree = []
+    fences = []
 
     for feature in features:
         props = feature.get("properties", {})
         detection_type = props.get("type", "unknown")
+        feature_type = props.get("feature_type", "")
 
         if detection_type == "sam_segment":
             sam_segments.append(feature)
@@ -147,6 +149,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             trees_deepforest.append(feature)
         elif detection_type == "tree_polygon" and props.get("source") == "detectree":
             trees_detectree.append(feature)
+        elif feature_type == "fence":
+            fences.append(feature)
 
     print(f"   ✓ Received {len(sam_segments)} SAM segments")
     print(f"   ✓ Received {len(vehicles)} vehicles")
@@ -154,6 +158,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Received {len(amenities)} amenities")
     print(f"   ✓ Received {len(trees_deepforest)} trees (DeepForest)")
     print(f"   ✓ Received {len(trees_detectree)} tree polygons (detectree)")
+    print(f"   ✓ Received {len(fences)} fence segments")
 
     # Get image dimensions for bounds calculation
     from PIL import Image
@@ -210,6 +215,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     detectree_group = folium.FeatureGroup(
         name=f"Tree Coverage - detectree ({len(trees_detectree)})", show=True
     )
+    fences_group = folium.FeatureGroup(name=f"Fences ({len(fences)})", show=True)
 
     # Add SAM segments with semantic labels
     print("3. Adding labeled SAM segments to map...")
@@ -356,6 +362,29 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             tooltip=f"Tree Cluster #{i+1}",
         ).add_to(detectree_group)
 
+    # Add fences
+    print("8. Adding fences to map...")
+    for i, fence in enumerate(fences):
+        props = fence["properties"]
+        coords = fence["geometry"]["coordinates"][0]
+
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#8B4513",  # Brown
+            weight=2,
+            fill=True,
+            fillColor="#8B4513",
+            fillOpacity=0.4,
+            popup=folium.Popup(
+                f"<b>Fence Segment</b><br>"
+                f"Segment ID: {props.get('segment_id', 0)}<br>"
+                f"Max Probability: {props.get('max_probability', 0):.2f}<br>"
+                f"Threshold: {props.get('threshold', 0.1)}",
+                max_width=200,
+            ),
+            tooltip=f"Fence #{i+1}",
+        ).add_to(fences_group)
+
     # Add all groups to map
     sam_group.add_to(m)
     vehicles_group.add_to(m)
@@ -363,6 +392,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     amenities_group.add_to(m)
     deepforest_group.add_to(m)
     detectree_group.add_to(m)
+    fences_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)
@@ -385,6 +415,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     </p>
     <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Cov
     </p>
+    <p style="margin:5px 0;"><span style="color:#8B4513;">●</span> Fences</p>
     <p style="margin:5px 0;"><span style="color:#FF0000;">●</span> SAM: Vehicle</p>
     <p style="margin:5px 0;"><span style="color:#87CEEB;">●</span> SAM: Driveway</p>
     <p style="margin:5px 0;"><span style="color:#808080;">●</span> SAM: Unknown</p>
@@ -417,6 +448,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"  - Amenities: {len(amenities)}")
     print(f"  - Trees (DeepForest): {len(trees_deepforest)}")
     print(f"  - Tree polygons (detectree): {len(trees_detectree)}")
+    print(f"  - Fence segments: {len(fences)}")
     print("\nOpen the HTML file in your browser to explore!")
 
 

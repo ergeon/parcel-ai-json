@@ -4,11 +4,12 @@ Unified property detection for satellite imagery with GeoJSON output.
 
 ## Features
 
-- **Unified Detection**: Detect vehicles, pools, amenities, trees, and SAM segments in one call
+- **Unified Detection**: Detect vehicles, pools, amenities, trees, fences, and SAM segments in one call
 - **Vehicle Detection**: Cars, trucks, and other vehicles using YOLOv8-OBB (DOTA aerial dataset)
 - **Swimming Pool Detection**: Detect swimming pools (DOTA class 14)
 - **Amenity Detection**: Tennis courts, basketball courts, baseball diamonds, soccer fields, and track fields
 - **Tree Coverage Detection**: Estimate tree coverage percentage using detectree (Docker-based)
+- **Fence Detection**: Detect fence lines and boundaries using HED (Holistically-Nested Edge Detection) with VGG16 backbone
 - **SAM Segmentation**: General-purpose image segmentation with semantic labeling (vehicles, driveways, buildings, etc.)
 - **OSM Integration**: Fetch OpenStreetMap data for parcel context and geographic features
 - **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
@@ -102,6 +103,32 @@ curl -X POST http://localhost:8000/detect/trees \
   -F "image=@satellite.jpg" \
   -F "center_lat=37.7749" \
   -F "center_lon=-122.4194"
+
+# Fences only
+curl -X POST http://localhost:8000/detect/fences \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "threshold=0.1"
+
+# Fences with Regrid probability mask (recommended for better accuracy)
+curl -X POST http://localhost:8000/detect/fences \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "fence_mask=@fence_probability.png" \
+  -F "threshold=0.1"
+```
+
+**Include fence detection in unified detection:**
+
+```bash
+curl -X POST http://localhost:8000/detect \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "detect_fences=true" \
+  -F "fence_mask=@fence_probability.png"
 ```
 
 ### Production Deployment
@@ -257,6 +284,11 @@ vehicles = detector.detect_vehicles(satellite_image)
 **Trees (detectree via Docker):**
 - Tree coverage percentage based on pixel classification
 
+**Fences (HED Model):**
+- Fence lines and boundaries detected using HED (Holistically-Nested Edge Detection) with VGG16 backbone
+- Supports 4-channel input (RGB + Regrid fence probability mask)
+- Returns fence polygons in geographic coordinates
+
 ## GeoJSON Output Format
 
 ```json
@@ -291,8 +323,9 @@ vehicles = detector.detect_vehicles(satellite_image)
 This is a **containerized microservice** with a FastAPI REST API.
 
 **Key Components:**
-- FastAPI REST API (6 endpoints)
+- FastAPI REST API (7 endpoints)
 - YOLOv8-OBB detection (vehicles, pools, amenities)
+- HED fence detection (Holistically-Nested Edge Detection with VGG16)
 - SAM (Segment Anything) general-purpose segmentation with semantic labeling
 - detectree tree coverage analysis
 - OpenStreetMap data integration
