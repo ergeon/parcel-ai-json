@@ -97,7 +97,7 @@ class FenceDetectionService:
         # Set default model path
         if model_path is None:
             models_dir = Path(__file__).parent.parent / "models"
-            self.model_path = str(models_dir / "hed_fence_checkpoint_best.pth")
+            self.model_path = str(models_dir / "hed_fence_weighted_loss.pth")
         else:
             self.model_path = model_path
 
@@ -112,7 +112,7 @@ class FenceDetectionService:
                 f"Please ensure the model checkpoint is available."
             )
 
-        print(f"Loading HED fence detection model: {self.model_path}")
+        print(f"Loading HED fence detection model (weighted loss): {self.model_path}")
 
         # Load model architecture
         self._model = HED(pretrained=False, input_channels=4)
@@ -123,9 +123,11 @@ class FenceDetectionService:
         self._model = self._model.to(self.device)
         self._model.eval()
 
-        print(f"✓ HED model loaded on {self.device}")
+        print(f"✓ HED weighted loss model loaded on {self.device}")
         print(f"✓ Trained for {checkpoint['epoch']} epochs")
-        print(f"✓ Best val_loss: {checkpoint['best_val_loss']:.4f}")
+        print(f"✓ Best val_loss: {checkpoint.get('val_loss', checkpoint.get('best_val_loss', 'N/A'))}")
+        if "pos_weight" in checkpoint:
+            print(f"✓ Pos weight (false negative penalty): {checkpoint['pos_weight']}")
 
     def generate_fence_probability_mask(
         self,
