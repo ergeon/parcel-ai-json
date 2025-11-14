@@ -120,7 +120,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         self.assertEqual(service.threshold, 0.1)
         self.assertEqual(service.device, "cpu")
-        self.assertTrue(service.model_path.endswith("hed_fence_checkpoint_best.pth"))
+        self.assertTrue(service.model_path.endswith("hed_fence_weighted_loss.pth"))
         self.assertIsNone(service._model)
 
     @patch("parcel_ai_json.fence_detector.Path")
