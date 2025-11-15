@@ -1,10 +1,8 @@
 """Tests for fence detection service."""
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import numpy as np
-import tempfile
-from pathlib import Path
 
 from parcel_ai_json.fence_detector import (
     FenceDetection,
@@ -167,7 +165,7 @@ class TestFenceDetectionService(unittest.TestCase):
             service._load_model()
 
     def test_detect_fences_simple(self):
-        """Test fence detection service can be instantiated and has correct parameters."""
+        """Test fence detection service can be instantiated."""
         service = FenceDetectionService(threshold=0.15)
 
         # Test basic service properties
@@ -319,6 +317,153 @@ class TestFenceDetectionService(unittest.TestCase):
         # Should return empty mask
         self.assertEqual(mask.shape, (640, 640))
         self.assertEqual(mask.max(), 0.0)
+
+    def test_fence_detection_to_geojson_without_debug_boundary(self):
+        """Test converting FenceDetection to GeoJSON without debug boundary."""
+        prob_mask = np.random.rand(512, 512).astype(np.float32)
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        geo_polygons = [
+            [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)],
+        ]
+
+        debug_boundary = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7748)
+        ]
+
+        detection = FenceDetection(
+            probability_mask=prob_mask,
+            binary_mask=binary_mask,
+            geo_polygons=geo_polygons,
+            max_probability=0.75,
+            mean_probability=0.08,
+            fence_pixel_count=300,
+            threshold=0.1,
+            debug_boundary=debug_boundary,
+        )
+
+        # Without debug boundary
+        features = detection.to_geojson_features(
+            include_debug_boundary=False
+        )
+
+        # Should only have fence features, not debug boundary
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0]["properties"]["feature_type"], "fence")
+
+    def test_fence_detection_to_geojson_with_debug_boundary(self):
+        """Test converting FenceDetection to GeoJSON with debug boundary."""
+        prob_mask = np.random.rand(512, 512).astype(np.float32)
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        geo_polygons = [
+            [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)],
+        ]
+        debug_boundary = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+            (-122.4193, 37.7748),
+            (-122.4194, 37.7748),
+            (-122.4194, 37.7749),
+        ]
+
+        detection = FenceDetection(
+            probability_mask=prob_mask,
+            binary_mask=binary_mask,
+            geo_polygons=geo_polygons,
+            max_probability=0.75,
+            mean_probability=0.08,
+            fence_pixel_count=300,
+            threshold=0.1,
+            debug_boundary=debug_boundary,
+        )
+
+        # With debug boundary (default)
+        features = detection.to_geojson_features()
+
+        # Should have fence + debug boundary
+        self.assertEqual(len(features), 2)
+        self.assertEqual(features[0]["properties"]["feature_type"], "fence")
+        self.assertEqual(
+            features[1]["properties"]["feature_type"],
+            "fence_debug_boundary"
+        )
+        self.assertEqual(
+            features[1]["geometry"]["coordinates"],
+            [debug_boundary]
+        )
+
+    def test_fence_detection_to_geojson_without_debug_boundary_set(self):
+        """Test to_geojson_features when debug_boundary is None."""
+        prob_mask = np.random.rand(512, 512).astype(np.float32)
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        geo_polygons = [
+            [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)],
+        ]
+
+        detection = FenceDetection(
+            probability_mask=prob_mask,
+            binary_mask=binary_mask,
+            geo_polygons=geo_polygons,
+            max_probability=0.75,
+            mean_probability=0.08,
+            fence_pixel_count=300,
+            threshold=0.1,
+            debug_boundary=None,
+        )
+
+        # Should not include debug boundary when it's None
+        features = detection.to_geojson_features(
+            include_debug_boundary=True
+        )
+
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0]["properties"]["feature_type"], "fence")
+
+    def test_generate_fence_probability_mask_no_blur(self):
+        """Test fence mask generation with blur disabled."""
+        service = FenceDetectionService()
+
+        coords = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+            (-122.4193, 37.7748),
+            (-122.4194, 37.7748),
+            (-122.4194, 37.7749),
+        ]
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=coords,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20,
+            blur_sigma=0.0,  # Disable blur
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertTrue(mask.max() <= 1.0)
+
+    def test_generate_fence_probability_mask_custom_line_width(self):
+        """Test fence mask generation with custom line width."""
+        service = FenceDetectionService()
+
+        coords = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+            (-122.4193, 37.7748),
+            (-122.4194, 37.7748),
+            (-122.4194, 37.7749),
+        ]
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=coords,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20,
+            line_width=5,  # Custom line width
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertTrue(mask.max() <= 1.0)
 
 
 if __name__ == "__main__":
