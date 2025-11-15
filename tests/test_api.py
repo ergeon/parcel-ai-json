@@ -107,7 +107,10 @@ class TestAPI(unittest.TestCase):
                 "image_height": 512,
             },
         }
-        mock_detector.detect_all_geojson.return_value = mock_geojson
+        # Mock the detect_all() method to return a mock detections object
+        mock_detections = Mock()
+        mock_detections.to_geojson.return_value = mock_geojson
+        mock_detector.detect_all.return_value = mock_detections
         mock_get_detector.return_value = mock_detector
 
         # Create test image

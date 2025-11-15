@@ -131,6 +131,7 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     trees_deepforest = []
     trees_detectree = []
     fences = []
+    fence_debug_boundary = None
     osm_buildings = []
 
     for feature in features:
@@ -152,6 +153,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             trees_detectree.append(feature)
         elif feature_type == "fence":
             fences.append(feature)
+        elif feature_type == "fence_debug_boundary":
+            fence_debug_boundary = feature
         elif detection_type == "osm_building":
             osm_buildings.append(feature)
 
@@ -162,6 +165,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
     print(f"   ✓ Received {len(trees_deepforest)} trees (DeepForest)")
     print(f"   ✓ Received {len(trees_detectree)} tree polygons (detectree)")
     print(f"   ✓ Received {len(fences)} fence segments")
+    if fence_debug_boundary:
+        print("   ✓ Found fence debug boundary (HED mask extent)")
     print(f"   ✓ Received {len(osm_buildings)} OSM buildings")
 
     # Get image dimensions for bounds calculation
@@ -392,8 +397,29 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
             tooltip=f"Fence #{i+1}",
         ).add_to(fences_group)
 
+    # Add fence debug boundary (HED mask extent visualization)
+    if fence_debug_boundary:
+        print("   Adding HED mask boundary (debug)...")
+        coords = fence_debug_boundary["geometry"]["coordinates"][0]
+        props = fence_debug_boundary.get("properties", {})
+
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#FF0000",  # Bright red
+            weight=4,         # Thick line
+            fill=False,       # No fill - just outline
+            popup=folium.Popup(
+                f"<b>HED Mask Boundary (Debug)</b><br>"
+                f"{props.get('description', 'HED mask extent')}<br>"
+                f"Shows the extent of the 512x512 HED fence detection mask<br>"
+                f"scaled to 640x640 satellite image space",
+                max_width=300,
+            ),
+            tooltip="HED Mask Boundary (Debug)",
+        ).add_to(fences_group)
+
     # Add OSM buildings
-    print(f"9. Adding OSM buildings to map...")
+    print("9. Adding OSM buildings to map...")
     for i, osm_building in enumerate(osm_buildings):
         props = osm_building["properties"]
         coords = osm_building["geometry"]["coordinates"][0]

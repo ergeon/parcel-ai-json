@@ -33,6 +33,8 @@ class FenceDetection:
     mean_probability: float = 0.0
     fence_pixel_count: int = 0
     threshold: float = 0.1
+    # Debug boundary for HED mask
+    debug_boundary: Optional[List[Tuple[float, float]]] = None
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""
@@ -44,8 +46,16 @@ class FenceDetection:
             "fence_segment_count": len(self.geo_polygons),
         }
 
-    def to_geojson_features(self) -> List[Dict]:
-        """Convert to list of GeoJSON features (one per fence segment)."""
+    def to_geojson_features(
+        self,
+        include_debug_boundary: bool = True
+    ) -> List[Dict]:
+        """Convert to list of GeoJSON features (one per fence segment).
+
+        Args:
+            include_debug_boundary: If True, adds a boundary rectangle
+                showing HED mask extent
+        """
         features = []
         for i, polygon in enumerate(self.geo_polygons):
             features.append(
@@ -61,6 +71,26 @@ class FenceDetection:
                         "max_probability": self.max_probability,
                         "mean_probability": self.mean_probability,
                         "threshold": self.threshold,
+                    },
+                }
+            )
+
+        # Add debug boundary showing HED mask extent
+        # (512x512 in HED space, 640x640 in satellite space)
+        if include_debug_boundary and self.debug_boundary is not None:
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [self.debug_boundary],
+                    },
+                    "properties": {
+                        "feature_type": "fence_debug_boundary",
+                        "description": (
+                            "HED mask boundary "
+                            "(512x512 scaled to 640x640)"
+                        ),
                     },
                 }
             )
@@ -128,9 +158,14 @@ class FenceDetectionService:
 
         print(f"✓ HED mixed finetune model loaded on {self.device}")
         print(f"✓ Trained for {checkpoint['epoch']} epochs")
-        print(f"✓ Best val_loss: {checkpoint.get('val_loss', checkpoint.get('best_val_loss', 'N/A'))}")
+        val_loss = checkpoint.get(
+            'val_loss',
+            checkpoint.get('best_val_loss', 'N/A')
+        )
+        print(f"✓ Best val_loss: {val_loss}")
         if "pos_weight" in checkpoint:
-            print(f"✓ Pos weight (false negative penalty): {checkpoint['pos_weight']}")
+            pos_weight = checkpoint['pos_weight']
+            print(f"✓ Pos weight (false negative penalty): {pos_weight}")
 
     def generate_fence_probability_mask(
         self,
@@ -169,10 +204,13 @@ class FenceDetectionService:
 
         # Parse parcel polygon
         if isinstance(parcel_polygon, dict):
-            # GeoJSON Feature format: {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}}
+            # GeoJSON Feature format:
+            # {"type": "Feature", "geometry": {"type": "Polygon",
+            #  "coordinates": [[[lon, lat], ...]]}}
             if "geometry" in parcel_polygon:
                 coords = parcel_polygon["geometry"].get("coordinates", [[]])[0]
-            # GeoJSON Polygon format: {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
+            # GeoJSON Polygon format:
+            # {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
             elif "coordinates" in parcel_polygon:
                 coords = parcel_polygon.get("coordinates", [[]])[0]
             else:
@@ -293,8 +331,8 @@ class FenceDetectionService:
         # Apply threshold
         binary_mask = (prediction > self.threshold).astype(np.uint8) * 255
 
-        # Extract fence polygons
-        geo_polygons = self._extract_fence_polygons(
+        # Extract fence polygons and debug boundary
+        geo_polygons, debug_boundary = self._extract_fence_polygons(
             binary_mask, center_lat, center_lon, zoom_level
         )
 
@@ -309,6 +347,7 @@ class FenceDetectionService:
             mean_probability=float(prediction.mean()),
             fence_pixel_count=int(fence_pixels),
             threshold=self.threshold,
+            debug_boundary=debug_boundary,
         )
 
     def _prepare_4channel_input(
@@ -380,8 +419,10 @@ class FenceDetectionService:
         # Find connected components
         labeled, num_features = ndimage.label(binary_mask)
 
-        # Create coordinate converter (640x640 to match satellite image size)
-        # Note: HED model outputs 512x512, so we need to scale coordinates back to 640x640
+        # Create coordinate converter
+        # (640x640 to match satellite image size)
+        # Note: HED model outputs 512x512, so we need to scale
+        # coordinates back to 640x640
         coord_converter = ImageCoordinateConverter(
             center_lat=center_lat,
             center_lon=center_lon,
@@ -402,7 +443,11 @@ class FenceDetectionService:
             # Skip very small components (noise)
             component_size = np.sum(component_mask > 0)
             if component_size < self.min_component_pixels:
-                print(f"  Skipping small component {i}: {component_size} pixels (< {self.min_component_pixels})")
+                min_px = self.min_component_pixels
+                print(
+                    f"  Skipping small component {i}: "
+                    f"{component_size} pixels (< {min_px})"
+                )
                 continue
 
             print(f"  Processing component {i}: {component_size} pixels")
@@ -417,15 +462,23 @@ class FenceDetectionService:
                     continue
 
                 # Convert pixel coordinates to geographic
-                # Scale from 512x512 to 640x640 before converting
+                # Scale from 512x512 to 640x640 preserving shared center
                 geo_points = []
                 for point in contour.squeeze():
                     if point.ndim == 1 and len(point) == 2:
                         x, y = point
-                        # Scale coordinates from 512x512 to 640x640
-                        x_scaled = int(x * scale_factor)
-                        y_scaled = int(y * scale_factor)
-                        lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
+                        # Convert to offset from HED center (256, 256)
+                        offset_x = x - 256
+                        offset_y = y - 256
+                        # Scale the offset
+                        scaled_offset_x = offset_x * scale_factor
+                        scaled_offset_y = offset_y * scale_factor
+                        # Add to satellite center (320, 320)
+                        x_scaled = 320 + scaled_offset_x
+                        y_scaled = 320 + scaled_offset_y
+                        lon, lat = coord_converter.pixel_to_geo(
+                            x_scaled, y_scaled
+                        )
                         geo_points.append((lon, lat))
 
                 if len(geo_points) >= 3:
@@ -433,7 +486,30 @@ class FenceDetectionService:
                     geo_points.append(geo_points[0])
                     polygons.append(geo_points)
 
-        return polygons
+        # Create debug boundary rectangle showing HED mask extent
+        # HED coords (0,0) to (512,512) mapped to satellite space
+        boundary_coords = [
+            (0, 0),      # Top-left
+            (512, 0),    # Top-right
+            (512, 512),  # Bottom-right
+            (0, 512),    # Bottom-left
+            (0, 0),      # Close
+        ]
+        boundary_geo = []
+        for x, y in boundary_coords:
+            # Convert to offset from HED center (256, 256)
+            offset_x = x - 256
+            offset_y = y - 256
+            # Scale the offset
+            scaled_offset_x = offset_x * scale_factor
+            scaled_offset_y = offset_y * scale_factor
+            # Add to satellite center (320, 320)
+            x_scaled = 320 + scaled_offset_x
+            y_scaled = 320 + scaled_offset_y
+            lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
+            boundary_geo.append((lon, lat))
+
+        return polygons, boundary_geo
 
     def detect_fences_geojson(
         self, satellite_image: Dict, fence_probability_mask: Optional[np.ndarray] = None

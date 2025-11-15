@@ -123,7 +123,10 @@ async def detect_property(
     ),
     regrid_parcel_polygon: Optional[str] = Form(
         None,
-        description="Optional Regrid parcel polygon as JSON string (for fence detection)",
+        description=(
+            "Optional Regrid parcel polygon as JSON string "
+            "(for fence detection)"
+        ),
     ),
 ):
     """Detect all property features in satellite image.
@@ -193,29 +196,40 @@ async def detect_property(
 
             try:
                 parcel_data = json.loads(regrid_parcel_polygon)
-                logger.info(f"Parsed Regrid parcel polygon from JSON")
+                logger.info("Parsed Regrid parcel polygon from JSON")
 
                 # Handle GeoJSON Feature format (extract geometry)
                 if isinstance(parcel_data, dict):
-                    if parcel_data.get("type") == "Feature" and "geometry" in parcel_data:
+                    if (parcel_data.get("type") == "Feature" and
+                            "geometry" in parcel_data):
                         # Extract geometry from Feature
                         parcel_polygon = parcel_data["geometry"]
+                        geom_type = parcel_polygon.get('type')
                         logger.info(
-                            f"Extracted geometry from GeoJSON Feature: {parcel_polygon.get('type')}"
+                            f"Extracted geometry from GeoJSON Feature: "
+                            f"{geom_type}"
                         )
                     elif "coordinates" in parcel_data:
                         # Already a geometry object
                         parcel_polygon = parcel_data
-                        logger.info(f"Using GeoJSON geometry: {parcel_data.get('type')}")
+                        geom_type = parcel_data.get('type')
+                        logger.info(
+                            f"Using GeoJSON geometry: {geom_type}"
+                        )
                     else:
+                        keys = list(parcel_data.keys())
                         logger.warning(
-                            f"Unknown parcel polygon format with keys: {list(parcel_data.keys())}"
+                            f"Unknown parcel polygon format with keys: "
+                            f"{keys}"
                         )
                         parcel_polygon = parcel_data
                 elif isinstance(parcel_data, list):
                     # List of coordinate tuples
                     parcel_polygon = parcel_data
-                    logger.info(f"Using coordinate list with {len(parcel_data)} points")
+                    num_points = len(parcel_data)
+                    logger.info(
+                        f"Using coordinate list with {num_points} points"
+                    )
                 else:
                     logger.warning(
                         f"Unexpected parcel polygon type: {type(parcel_data)}"
@@ -333,8 +347,10 @@ async def detect_property(
                     if osm_buildings:
                         for building in osm_buildings:
                             geojson["features"].append(building.to_geojson_feature())
+                        num_buildings = len(osm_buildings)
                         logger.info(
-                            f"Added {len(osm_buildings)} OSM buildings to GeoJSON output"
+                            f"Added {num_buildings} OSM buildings to "
+                            f"GeoJSON output"
                         )
 
             # Add regrid parcel polygon to GeoJSON output if provided
@@ -573,9 +589,18 @@ async def detect_fences(
     zoom_level: int = Form(20, description="Zoom level (default: 20)"),
     fence_mask: UploadFile = File(
         None,
-        description="Optional fence probability mask from Regrid (512x512 PNG/NPY)",
+        description=(
+            "Optional fence probability mask from Regrid "
+            "(512x512 PNG/NPY)"
+        ),
     ),
-    threshold: float = Form(0.05, description="Probability threshold (default: 0.05 - lowered for better detection)"),
+    threshold: float = Form(
+        0.05,
+        description=(
+            "Probability threshold "
+            "(default: 0.05 - lowered for better detection)"
+        )
+    ),
 ):
     """Detect fences in satellite image using HED model.
 

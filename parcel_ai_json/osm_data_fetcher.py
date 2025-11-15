@@ -236,13 +236,15 @@ class OSMDataFetcher:
                     jitter = random.uniform(0, delay * 0.1)
                     total_delay = delay + jitter
                     print(
-                        f"OSM {resource_name} fetch timeout (attempt {attempt + 1}/{self.max_retries}). "
+                        f"OSM {resource_name} fetch timeout "
+                        f"(attempt {attempt + 1}/{self.max_retries}). "
                         f"Retrying in {total_delay:.1f}s..."
                     )
                     time.sleep(total_delay)
                 else:
                     print(
-                        f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                        f"Warning: OSM {resource_name} fetch failed "
+                        f"after {self.max_retries} attempts: {e}"
                     )
                     return {}
 
@@ -254,15 +256,17 @@ class OSMDataFetcher:
                         delay = self.initial_backoff * (2**attempt)
                         jitter = random.uniform(0, delay * 0.1)
                         total_delay = delay + jitter
+                        status = e.response.status_code
                         print(
-                            f"OSM {resource_name} fetch error {e.response.status_code} "
+                            f"OSM {resource_name} fetch error {status} "
                             f"(attempt {attempt + 1}/{self.max_retries}). "
                             f"Retrying in {total_delay:.1f}s..."
                         )
                         time.sleep(total_delay)
                     else:
                         print(
-                            f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                            f"Warning: OSM {resource_name} fetch failed "
+                            f"after {self.max_retries} attempts: {e}"
                         )
                         return {}
                 else:
@@ -286,14 +290,16 @@ class OSMDataFetcher:
                     time.sleep(total_delay)
                 else:
                     print(
-                        f"Warning: OSM {resource_name} fetch failed after {self.max_retries} attempts: {e}"
+                        f"Warning: OSM {resource_name} fetch failed "
+                        f"after {self.max_retries} attempts: {e}"
                     )
                     return {}
 
             except Exception as e:
                 # Unexpected error - log and return empty
                 print(
-                    f"Warning: OSM {resource_name} fetch failed with unexpected error: {e}"
+                    f"Warning: OSM {resource_name} fetch failed with "
+                    f"unexpected error: {e}"
                 )
                 return {}
 

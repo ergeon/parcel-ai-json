@@ -118,9 +118,9 @@ class TestFenceDetectionService(unittest.TestCase):
         """Test service initialization with default parameters."""
         service = FenceDetectionService()
 
-        self.assertEqual(service.threshold, 0.1)
+        self.assertEqual(service.threshold, 0.05)
         self.assertEqual(service.device, "cpu")
-        self.assertTrue(service.model_path.endswith("hed_fence_weighted_loss.pth"))
+        self.assertTrue(service.model_path.endswith("hed_fence_mixed_finetune.pth"))
         self.assertIsNone(service._model)
 
     @patch("parcel_ai_json.fence_detector.Path")
