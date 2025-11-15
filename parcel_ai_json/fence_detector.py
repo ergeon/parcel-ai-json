@@ -238,13 +238,16 @@ class FenceDetectionService:
                 dtype=np.float32
             )
 
-        # Create coordinate converter (match Google Maps image size)
-        coord_converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=self.SATELLITE_IMAGE_SIZE,
-            image_height_px=self.SATELLITE_IMAGE_SIZE,
-            zoom_level=zoom_level,
+        # Create coordinate converter using factory method
+        image_metadata = {
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "width_px": self.SATELLITE_IMAGE_SIZE,
+            "height_px": self.SATELLITE_IMAGE_SIZE,
+            "zoom_level": zoom_level,
+        }
+        coord_converter = ImageCoordinateConverter.from_satellite_image(
+            image_metadata
         )
 
         # Convert geographic coords to pixel coords
@@ -433,15 +436,18 @@ class FenceDetectionService:
         # Find connected components
         labeled, num_features = ndimage.label(binary_mask)
 
-        # Create coordinate converter (satellite image size)
+        # Create coordinate converter using factory method
         # Note: HED model outputs at HED_MODEL_OUTPUT_SIZE, so we need to
         # scale coordinates back to SATELLITE_IMAGE_SIZE
-        coord_converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=self.SATELLITE_IMAGE_SIZE,
-            image_height_px=self.SATELLITE_IMAGE_SIZE,
-            zoom_level=zoom_level,
+        image_metadata = {
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "width_px": self.SATELLITE_IMAGE_SIZE,
+            "height_px": self.SATELLITE_IMAGE_SIZE,
+            "zoom_level": zoom_level,
+        }
+        coord_converter = ImageCoordinateConverter.from_satellite_image(
+            image_metadata
         )
 
         # Scale factor from HED output to satellite image

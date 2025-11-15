@@ -226,21 +226,12 @@ class DeepForestService:
 
         # Run detection
         try:
-            from PIL import Image
             from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
             from pyproj import Geod
 
-            # Get image dimensions
-            img = Image.open(img_path)
-            img_width, img_height = img.size
-
-            # Initialize coordinate converter
-            converter = ImageCoordinateConverter(
-                center_lat=satellite_image["center_lat"],
-                center_lon=satellite_image["center_lon"],
-                image_width_px=img_width,
-                image_height_px=img_height,
-                zoom_level=satellite_image.get("zoom_level", 20),
+            # Initialize coordinate converter using factory method
+            converter = ImageCoordinateConverter.from_satellite_image(
+                satellite_image, str(img_path)
             )
 
             # Initialize geoid for area calculations
@@ -400,13 +391,15 @@ class DetectreeService:
         from pyproj import Geod
         from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
-        # Initialize coordinate converter
-        converter = ImageCoordinateConverter(
-            center_lat=satellite_image["center_lat"],
-            center_lon=satellite_image["center_lon"],
-            image_width_px=image_width,
-            image_height_px=image_height,
-            zoom_level=satellite_image.get("zoom_level", 20),
+        # Initialize coordinate converter using factory method
+        # Add dimensions to satellite_image dict for factory method
+        image_metadata = {
+            **satellite_image,
+            "width_px": image_width,
+            "height_px": image_height,
+        }
+        converter = ImageCoordinateConverter.from_satellite_image(
+            image_metadata
         )
 
         # Initialize geoid for area calculations

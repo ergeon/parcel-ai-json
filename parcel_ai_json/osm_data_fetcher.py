@@ -163,12 +163,16 @@ class OSMDataFetcher:
         """
         from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
-        converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=image_width_px,
-            image_height_px=image_height_px,
-            zoom_level=zoom_level,
+        # Create converter using factory method
+        image_metadata = {
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "width_px": image_width_px,
+            "height_px": image_height_px,
+            "zoom_level": zoom_level,
+        }
+        converter = ImageCoordinateConverter.from_satellite_image(
+            image_metadata
         )
 
         # Get corners

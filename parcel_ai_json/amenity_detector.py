@@ -145,23 +145,9 @@ class AmenityDetectionService:
         if not img_path.exists():
             raise FileNotFoundError(f"Image not found: {img_path}")
 
-        # Get image metadata
-        center_lat = satellite_image["center_lat"]
-        center_lon = satellite_image["center_lon"]
-        zoom_level = satellite_image.get("zoom_level", 20)
-
-        # Create coordinate converter
-        from PIL import Image
-
-        with Image.open(img_path) as img:
-            width, height = img.size
-
-        coord_converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=width,
-            image_height_px=height,
-            zoom_level=zoom_level,
+        # Create coordinate converter using factory method
+        coord_converter = ImageCoordinateConverter.from_satellite_image(
+            satellite_image, str(img_path)
         )
 
         # Run inference

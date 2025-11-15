@@ -83,6 +83,78 @@ def get_sam_service() -> SAMSegmentationService:
     return _sam_service
 
 
+async def _handle_detection_request(
+    image: UploadFile,
+    center_lat: float,
+    center_lon: float,
+    zoom_level: int,
+    detection_func,
+    feature_name: str,
+):
+    """Generic handler for detection requests with common boilerplate.
+
+    Args:
+        image: Uploaded satellite image file
+        center_lat: Center latitude of image
+        center_lon: Center longitude of image
+        zoom_level: Google Maps zoom level
+        detection_func: Callable that performs detection
+            (takes satellite_image dict, returns list of detections)
+        feature_name: Name of feature being detected
+            (e.g., "vehicle", "pool", "amenity", "tree")
+
+    Returns:
+        JSONResponse with GeoJSON FeatureCollection
+
+    Raises:
+        HTTPException: On detection failure
+    """
+    logger.info(
+        f"Processing {feature_name} detection: "
+        f"lat={center_lat}, lon={center_lon}"
+    )
+
+    temp_dir = None
+    try:
+        # Save uploaded file to temporary directory
+        temp_dir = Path(tempfile.mkdtemp())
+        image_path = temp_dir / image.filename
+        with open(image_path, "wb") as f:
+            shutil.copyfileobj(image.file, f)
+
+        # Create satellite image metadata
+        satellite_image = {
+            "path": str(image_path),
+            "center_lat": center_lat,
+            "center_lon": center_lon,
+            "zoom_level": zoom_level,
+        }
+
+        # Run detection
+        detections = detection_func(satellite_image)
+
+        # Convert to GeoJSON
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [d.to_geojson_feature() for d in detections],
+        }
+
+        logger.info(f"Found {len(detections)} {feature_name}s")
+        return JSONResponse(content=geojson)
+
+    except Exception as e:
+        logger.error(f"{feature_name} detection failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"{feature_name.capitalize()} detection failed: {str(e)}"
+        )
+
+    finally:
+        # Clean up temporary files
+        if temp_dir and temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 @app.get("/")
 async def root():
     """Health check endpoint."""
@@ -411,42 +483,15 @@ async def detect_vehicles(
     zoom_level: int = Form(20),
 ):
     """Detect only vehicles in satellite image."""
-    logger.info(f"Processing vehicle detection: lat={center_lat}, lon={center_lon}")
-
-    temp_dir = None
-    try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
-
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        detector = get_detector()
-        vehicles = detector.vehicle_detector.detect_vehicles(satellite_image)
-
-        geojson = {
-            "type": "FeatureCollection",
-            "features": [v.to_geojson_feature() for v in vehicles],
-        }
-
-        logger.info(f"Found {len(vehicles)} vehicles")
-        return JSONResponse(content=geojson)
-
-    except Exception as e:
-        logger.error(f"Vehicle detection failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Vehicle detection failed: {str(e)}"
-        )
-
-    finally:
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+    detector = get_detector()
+    return await _handle_detection_request(
+        image=image,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        zoom_level=zoom_level,
+        detection_func=detector.vehicle_detector.detect_vehicles,
+        feature_name="vehicle",
+    )
 
 
 @app.post("/detect/pools")
@@ -457,40 +502,15 @@ async def detect_pools(
     zoom_level: int = Form(20),
 ):
     """Detect only swimming pools in satellite image."""
-    logger.info(f"Processing pool detection: lat={center_lat}, lon={center_lon}")
-
-    temp_dir = None
-    try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
-
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        detector = get_detector()
-        pools = detector.pool_detector.detect_swimming_pools(satellite_image)
-
-        geojson = {
-            "type": "FeatureCollection",
-            "features": [p.to_geojson_feature() for p in pools],
-        }
-
-        logger.info(f"Found {len(pools)} pools")
-        return JSONResponse(content=geojson)
-
-    except Exception as e:
-        logger.error(f"Pool detection failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Pool detection failed: {str(e)}")
-
-    finally:
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+    detector = get_detector()
+    return await _handle_detection_request(
+        image=image,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        zoom_level=zoom_level,
+        detection_func=detector.pool_detector.detect_swimming_pools,
+        feature_name="pool",
+    )
 
 
 @app.post("/detect/amenities")
@@ -501,42 +521,15 @@ async def detect_amenities(
     zoom_level: int = Form(20),
 ):
     """Detect only amenities (tennis/basketball courts, etc.)."""
-    logger.info(f"Processing amenity detection: lat={center_lat}, lon={center_lon}")
-
-    temp_dir = None
-    try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
-
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        detector = get_detector()
-        amenities = detector.amenity_detector.detect_amenities(satellite_image)
-
-        geojson = {
-            "type": "FeatureCollection",
-            "features": [a.to_geojson_feature() for a in amenities],
-        }
-
-        logger.info(f"Found {len(amenities)} amenities")
-        return JSONResponse(content=geojson)
-
-    except Exception as e:
-        logger.error(f"Amenity detection failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Amenity detection failed: {str(e)}"
-        )
-
-    finally:
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+    detector = get_detector()
+    return await _handle_detection_request(
+        image=image,
+        center_lat=center_lat,
+        center_lon=center_lon,
+        zoom_level=zoom_level,
+        detection_func=detector.amenity_detector.detect_amenities,
+        feature_name="amenity",
+    )
 
 
 @app.post("/detect/trees")

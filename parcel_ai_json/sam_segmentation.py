@@ -196,23 +196,11 @@ class SAMSegmentationService:
         with Image.open(image_path) as img:
             image_array = np.array(img.convert("RGB"))
 
-        # Get image dimensions
-        image_height, image_width = image_array.shape[:2]
-
-        # Get center coordinates
-        center_lat = satellite_image["center_lat"]
-        center_lon = satellite_image["center_lon"]
-        zoom_level = satellite_image.get("zoom_level", 20)
-
-        # Create coordinate converter for accurate pixel-to-geo conversion
+        # Create coordinate converter using factory method
         from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
 
-        coord_converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=image_width,
-            image_height_px=image_height,
-            zoom_level=zoom_level,
+        coord_converter = ImageCoordinateConverter.from_satellite_image(
+            satellite_image, image_path
         )
 
         # Run automatic mask generation

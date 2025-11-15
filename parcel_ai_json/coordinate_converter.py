@@ -4,9 +4,49 @@ Converts between pixel coordinates and WGS84 geographic coordinates using
 geodesic calculations with pyproj for accuracy.
 """
 
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 import math
 from pyproj import CRS, Geod
+
+
+def get_image_dimensions(
+    satellite_image: Dict,
+    image_path: Optional[str] = None
+) -> Tuple[int, int]:
+    """Get image dimensions from metadata or file.
+
+    Args:
+        satellite_image: Satellite image metadata dict
+        image_path: Optional path to image file
+
+    Returns:
+        Tuple of (width_px, height_px)
+
+    Raises:
+        ValueError: If dimensions not in metadata and no image_path provided
+        ImportError: If PIL not installed and needed to read dimensions
+    """
+    width_px = satellite_image.get("width_px")
+    height_px = satellite_image.get("height_px")
+
+    if width_px is None or height_px is None:
+        if image_path is None:
+            raise ValueError(
+                "Image dimensions not in metadata. "
+                "Must provide image_path to read from file."
+            )
+
+        try:
+            from PIL import Image
+            with Image.open(image_path) as img:
+                return img.size
+        except ImportError:
+            raise ImportError(
+                "PIL (Pillow) is required to read image dimensions. "
+                "Install with: pip install pillow"
+            )
+
+    return width_px, height_px
 
 
 class ImageCoordinateConverter:
@@ -53,6 +93,43 @@ class ImageCoordinateConverter:
         self.meters_per_pixel = (
             google_map_magic_const * math.cos(center_lat * math.pi / 180)
         ) / (2**zoom_level)
+
+    @classmethod
+    def from_satellite_image(
+        cls,
+        satellite_image: Dict,
+        image_path: Optional[str] = None
+    ) -> 'ImageCoordinateConverter':
+        """Create converter from satellite image metadata.
+
+        Factory method that extracts dimensions and creates converter.
+
+        Args:
+            satellite_image: Satellite image metadata dict with keys:
+                - center_lat: Latitude of image center
+                - center_lon: Longitude of image center
+                - zoom_level: Google Maps zoom level (optional, default 20)
+                - width_px: Image width (optional, read from file if missing)
+                - height_px: Image height (optional, read from file if missing)
+            image_path: Optional path to image file (needed if dimensions
+                not in metadata)
+
+        Returns:
+            ImageCoordinateConverter instance
+
+        Raises:
+            ValueError: If required metadata missing
+            ImportError: If PIL needed but not installed
+        """
+        width_px, height_px = get_image_dimensions(satellite_image, image_path)
+
+        return cls(
+            center_lat=satellite_image["center_lat"],
+            center_lon=satellite_image["center_lon"],
+            image_width_px=width_px,
+            image_height_px=height_px,
+            zoom_level=satellite_image.get("zoom_level", 20),
+        )
 
     def geo_to_pixel(self, lon: float, lat: float) -> Tuple[float, float]:
         """Convert geographic coordinates (lon, lat) to image pixel coordinates.

@@ -122,39 +122,14 @@ class SwimmingPoolDetectionService:
         """
         self._load_model()
 
-        # Extract metadata
+        # Get image path and verify it exists
         image_path = satellite_image["path"]
-        center_lat = satellite_image["center_lat"]
-        center_lon = satellite_image["center_lon"]
-        zoom_level = satellite_image.get("zoom_level", 20)
-
-        # Verify image exists
         if not Path(image_path).exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-        # Get image dimensions
-        width_px = satellite_image.get("width_px")
-        height_px = satellite_image.get("height_px")
-
-        if width_px is None or height_px is None:
-            try:
-                from PIL import Image
-
-                with Image.open(image_path) as img:
-                    width_px, height_px = img.size
-            except ImportError:
-                raise ImportError(
-                    "PIL (Pillow) is required to read image dimensions. "
-                    "Install with: pip install pillow"
-                )
-
-        # Create coordinate converter
-        coord_converter = ImageCoordinateConverter(
-            center_lat=center_lat,
-            center_lon=center_lon,
-            image_width_px=width_px,
-            image_height_px=height_px,
-            zoom_level=zoom_level,
+        # Create coordinate converter using factory method
+        coord_converter = ImageCoordinateConverter.from_satellite_image(
+            satellite_image, image_path
         )
 
         # Run inference
