@@ -105,6 +105,17 @@ class FenceDetectionService:
     - Channel 3: Fence probability from Regrid parcel data
     """
 
+    # Image dimensions
+    SATELLITE_IMAGE_SIZE = 640  # Google Maps satellite image size (px)
+    HED_MODEL_OUTPUT_SIZE = 512  # HED model output size (px)
+
+    # Coordinate centers (for scaling between coordinate spaces)
+    HED_CENTER_PX = HED_MODEL_OUTPUT_SIZE // 2  # 256
+    SATELLITE_CENTER_PX = SATELLITE_IMAGE_SIZE // 2  # 320
+
+    # Scaling factor from HED space to satellite space
+    HED_TO_SATELLITE_SCALE = SATELLITE_IMAGE_SIZE / HED_MODEL_OUTPUT_SIZE  # 1.25
+
     def __init__(
         self,
         model_path: Optional[str] = None,
@@ -222,14 +233,17 @@ class FenceDetectionService:
             print(
                 "WARNING: Invalid parcel polygon - using empty fence probability mask"
             )
-            return np.zeros((640, 640), dtype=np.float32)
+            return np.zeros(
+                (self.SATELLITE_IMAGE_SIZE, self.SATELLITE_IMAGE_SIZE),
+                dtype=np.float32
+            )
 
-        # Create coordinate converter (match Google Maps image size: 640x640)
+        # Create coordinate converter (match Google Maps image size)
         coord_converter = ImageCoordinateConverter(
             center_lat=center_lat,
             center_lon=center_lon,
-            image_width_px=640,
-            image_height_px=640,
+            image_width_px=self.SATELLITE_IMAGE_SIZE,
+            image_height_px=self.SATELLITE_IMAGE_SIZE,
             zoom_level=zoom_level,
         )
 
@@ -419,20 +433,19 @@ class FenceDetectionService:
         # Find connected components
         labeled, num_features = ndimage.label(binary_mask)
 
-        # Create coordinate converter
-        # (640x640 to match satellite image size)
-        # Note: HED model outputs 512x512, so we need to scale
-        # coordinates back to 640x640
+        # Create coordinate converter (satellite image size)
+        # Note: HED model outputs at HED_MODEL_OUTPUT_SIZE, so we need to
+        # scale coordinates back to SATELLITE_IMAGE_SIZE
         coord_converter = ImageCoordinateConverter(
             center_lat=center_lat,
             center_lon=center_lon,
-            image_width_px=640,
-            image_height_px=640,
+            image_width_px=self.SATELLITE_IMAGE_SIZE,
+            image_height_px=self.SATELLITE_IMAGE_SIZE,
             zoom_level=zoom_level,
         )
 
-        # Scale factor from 512x512 (HED output) to 640x640 (satellite image)
-        scale_factor = 640 / 512
+        # Scale factor from HED output to satellite image
+        scale_factor = self.HED_TO_SATELLITE_SCALE
 
         polygons = []
 
@@ -467,15 +480,15 @@ class FenceDetectionService:
                 for point in contour.squeeze():
                     if point.ndim == 1 and len(point) == 2:
                         x, y = point
-                        # Convert to offset from HED center (256, 256)
-                        offset_x = x - 256
-                        offset_y = y - 256
+                        # Convert to offset from HED center
+                        offset_x = x - self.HED_CENTER_PX
+                        offset_y = y - self.HED_CENTER_PX
                         # Scale the offset
                         scaled_offset_x = offset_x * scale_factor
                         scaled_offset_y = offset_y * scale_factor
-                        # Add to satellite center (320, 320)
-                        x_scaled = 320 + scaled_offset_x
-                        y_scaled = 320 + scaled_offset_y
+                        # Add to satellite center
+                        x_scaled = self.SATELLITE_CENTER_PX + scaled_offset_x
+                        y_scaled = self.SATELLITE_CENTER_PX + scaled_offset_y
                         lon, lat = coord_converter.pixel_to_geo(
                             x_scaled, y_scaled
                         )
@@ -487,25 +500,27 @@ class FenceDetectionService:
                     polygons.append(geo_points)
 
         # Create debug boundary rectangle showing HED mask extent
-        # HED coords (0,0) to (512,512) mapped to satellite space
+        # HED coords (0,0) to (HED_MODEL_OUTPUT_SIZE, HED_MODEL_OUTPUT_SIZE)
+        # mapped to satellite space
+        hed_max = self.HED_MODEL_OUTPUT_SIZE
         boundary_coords = [
-            (0, 0),      # Top-left
-            (512, 0),    # Top-right
-            (512, 512),  # Bottom-right
-            (0, 512),    # Bottom-left
-            (0, 0),      # Close
+            (0, 0),              # Top-left
+            (hed_max, 0),        # Top-right
+            (hed_max, hed_max),  # Bottom-right
+            (0, hed_max),        # Bottom-left
+            (0, 0),              # Close
         ]
         boundary_geo = []
         for x, y in boundary_coords:
-            # Convert to offset from HED center (256, 256)
-            offset_x = x - 256
-            offset_y = y - 256
+            # Convert to offset from HED center
+            offset_x = x - self.HED_CENTER_PX
+            offset_y = y - self.HED_CENTER_PX
             # Scale the offset
             scaled_offset_x = offset_x * scale_factor
             scaled_offset_y = offset_y * scale_factor
-            # Add to satellite center (320, 320)
-            x_scaled = 320 + scaled_offset_x
-            y_scaled = 320 + scaled_offset_y
+            # Add to satellite center
+            x_scaled = self.SATELLITE_CENTER_PX + scaled_offset_x
+            y_scaled = self.SATELLITE_CENTER_PX + scaled_offset_y
             lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
             boundary_geo.append((lon, lat))
 

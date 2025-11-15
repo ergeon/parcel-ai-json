@@ -207,6 +207,205 @@ class TestFenceDetectionService(unittest.TestCase):
         self.assertTrue(hasattr(service, "detect_fences_geojson"))
         self.assertTrue(callable(getattr(service, "detect_fences_geojson")))
 
+    def test_generate_fence_probability_mask_with_geojson_polygon(self):
+        """Test fence mask generation with GeoJSON polygon."""
+        service = FenceDetectionService()
+
+        parcel_polygon = {
+            "type": "Polygon",
+            "coordinates": [[
+                [-122.4194, 37.7749],
+                [-122.4193, 37.7749],
+                [-122.4193, 37.7748],
+                [-122.4194, 37.7748],
+                [-122.4194, 37.7749],
+            ]]
+        }
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=parcel_polygon,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.dtype, np.float32)
+        self.assertTrue(mask.max() <= 1.0)
+        self.assertTrue(mask.min() >= 0.0)
+
+    def test_generate_fence_probability_mask_with_coordinate_list(self):
+        """Test fence mask generation with coordinate list."""
+        service = FenceDetectionService()
+
+        # Test with plain coordinate list
+        coords = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+            (-122.4193, 37.7748),
+            (-122.4194, 37.7748),
+            (-122.4194, 37.7749),
+        ]
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=coords,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertTrue(mask.max() <= 1.0)
+
+    def test_generate_fence_probability_mask_with_feature(self):
+        """Test fence mask generation with GeoJSON Feature."""
+        service = FenceDetectionService()
+
+        parcel_feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-122.4194, 37.7749],
+                    [-122.4193, 37.7749],
+                    (-122.4193, 37.7748),
+                    (-122.4194, 37.7748),
+                    (-122.4194, 37.7749),
+                ]]
+            }
+        }
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=parcel_feature,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+
+    def test_generate_fence_probability_mask_with_empty_polygon(self):
+        """Test fence mask generation with empty polygon."""
+        service = FenceDetectionService()
+
+        # Empty polygon should return zeros
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=[],
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20
+        )
+
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.max(), 0.0)
+
+    def test_generate_fence_probability_mask_with_too_few_points(self):
+        """Test fence mask generation with < 3 points."""
+        service = FenceDetectionService()
+
+        # Polygon with only 2 points
+        coords = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+        ]
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=coords,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20
+        )
+
+        # Should return empty mask
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.max(), 0.0)
+
+    @patch('parcel_ai_json.fence_detector.Image')
+    @patch('parcel_ai_json.fence_detector.np.array')
+    def test_prepare_4channel_input(self, mock_np_array, mock_image):
+        """Test 4-channel input preparation."""
+        # Mock image loading
+        mock_img = Mock()
+        mock_img.size = (640, 640)
+        mock_img.convert.return_value = mock_img
+        mock_image.open.return_value = mock_img
+
+        # Mock numpy array
+        mock_rgb = np.random.rand(640, 640, 3).astype(np.float32)
+        mock_np_array.return_value = mock_rgb
+
+        service = FenceDetectionService()
+
+        fence_mask = np.random.rand(640, 640).astype(np.float32)
+        result = service._prepare_4channel_input("/fake/path.jpg", fence_mask)
+
+        # Should return (640, 640, 4)
+        self.assertEqual(result.shape, (640, 640, 4))
+        # Values should be normalized to [0, 1]
+        self.assertTrue(result.max() <= 1.0)
+        self.assertTrue(result.min() >= 0.0)
+
+    @patch('scipy.ndimage.label')
+    @patch('cv2.findContours')
+    def test_extract_fence_polygons(self, mock_findContours, mock_label):
+        """Test fence polygon extraction from binary mask."""
+        # Create binary mask with one component
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        binary_mask[100:200, 100:200] = 255
+
+        # Mock connected components
+        labeled = np.zeros((512, 512), dtype=int)
+        labeled[100:200, 100:200] = 1
+        mock_label.return_value = (labeled, 1)
+
+        # Mock contour finding
+        contour = np.array([
+            [[100, 100]],
+            [[200, 100]],
+            [[200, 200]],
+            [[100, 200]],
+        ])
+        mock_findContours.return_value = ([contour], None)
+
+        service = FenceDetectionService(min_component_pixels=50)
+
+        polygons = service._extract_fence_polygons(
+            binary_mask=binary_mask,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20,
+        )
+
+        # Should extract at least one polygon
+        self.assertGreater(len(polygons), 0)
+        # Each polygon should have at least 4 points (closed)
+        for polygon in polygons:
+            self.assertGreaterEqual(len(polygon), 4)
+
+    @patch('scipy.ndimage.label')
+    def test_extract_fence_polygons_filters_small_components(self, mock_label):
+        """Test that small components are filtered out."""
+        # Create binary mask with small component
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        binary_mask[100:105, 100:105] = 255  # Only 25 pixels
+
+        # Mock connected components
+        labeled = np.zeros((512, 512), dtype=int)
+        labeled[100:105, 100:105] = 1
+        mock_label.return_value = (labeled, 1)
+
+        service = FenceDetectionService(min_component_pixels=100)
+
+        polygons = service._extract_fence_polygons(
+            binary_mask=binary_mask,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+            zoom_level=20,
+        )
+
+        # Should skip component with < 100 pixels
+        self.assertEqual(len(polygons), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -259,6 +259,135 @@ class TestAPI(unittest.TestCase):
         finally:
             Path(tmp_path).unlink()
 
+    @patch("parcel_ai_json.api.get_sam_service")
+    @patch("parcel_ai_json.api.get_detector")
+    def test_detect_endpoint_with_sam(
+        self,
+        mock_get_detector,
+        mock_get_sam
+    ):
+        """Test /detect endpoint with SAM segmentation enabled."""
+        # Mock detector
+        mock_detector = Mock()
+        mock_detections = Mock()
+        mock_detections.vehicles = []
+        mock_detections.swimming_pools = []
+        mock_detections.amenities = []
+        mock_detections.trees = None
+        mock_detections.to_geojson.return_value = {
+            "type": "FeatureCollection",
+            "features": [],
+        }
+        mock_detector.detect_all.return_value = mock_detections
+        mock_get_detector.return_value = mock_detector
+
+        # Mock SAM service
+        mock_sam = Mock()
+        mock_sam.points_per_side = 32
+        mock_sam.segment_image.return_value = []
+        mock_get_sam.return_value = mock_sam
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"fake image data")
+            tmp_path = f.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                        "zoom_level": "20",
+                        "include_sam": "true",
+                        "sam_points_per_side": "16",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            # Verify SAM was called
+            mock_sam.segment_image.assert_called_once()
+            # Verify points_per_side was updated
+            self.assertEqual(mock_sam.points_per_side, 16)
+        finally:
+            Path(tmp_path).unlink()
+
+    @patch("parcel_ai_json.api.get_detector")
+    def test_detect_endpoint_with_fences(self, mock_get_detector):
+        """Test /detect endpoint with fence detection enabled."""
+        # Mock detector
+        mock_detector = Mock()
+        mock_detections = Mock()
+        mock_detections.to_geojson.return_value = {
+            "type": "FeatureCollection",
+            "features": [],
+        }
+        mock_detector.detect_all.return_value = mock_detections
+        mock_get_detector.return_value = mock_detector
+
+        parcel_polygon = {
+            "type": "Polygon",
+            "coordinates": [[
+                [-122.4194, 37.7749],
+                [-122.4193, 37.7749],
+                [-122.4193, 37.7748],
+                [-122.4194, 37.7748],
+                [-122.4194, 37.7749],
+            ]]
+        }
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"fake image data")
+            tmp_path = f.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                        "zoom_level": "20",
+                        "detect_fences": "true",
+                        "regrid_parcel_polygon": str(parcel_polygon),
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            # Verify detect_all was called with fence params
+            mock_detector.detect_all.assert_called_once()
+            call_kwargs = mock_detector.detect_all.call_args[1]
+            self.assertTrue(call_kwargs.get("detect_fences"))
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_detect_endpoint_invalid_parcel_polygon_json(self):
+        """Test /detect endpoint with invalid JSON in parcel polygon."""
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"fake image data")
+            tmp_path = f.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                        "zoom_level": "20",
+                        "detect_fences": "true",
+                        "regrid_parcel_polygon": "not valid json{{{",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Invalid JSON", response.json()["detail"])
+        finally:
+            Path(tmp_path).unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
