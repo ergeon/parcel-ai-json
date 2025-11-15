@@ -67,8 +67,8 @@ RUN echo "SAM models available at /app/models/:" && \
     ls -lh /app/models/sam_vit_*.pth
 
 # Verify HED fence detection model is available
-RUN echo "HED fence model (weighted loss) available at /app/models/:" && \
-    ls -lh /app/models/hed_fence_weighted_loss.pth
+RUN echo "HED fence model (mixed finetune) available at /app/models/:" && \
+    ls -lh /app/models/hed_fence_mixed_finetune.pth
 
 # Pre-download detectree model data
 RUN python -c "\

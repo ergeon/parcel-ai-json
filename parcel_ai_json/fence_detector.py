@@ -78,8 +78,9 @@ class FenceDetectionService:
     def __init__(
         self,
         model_path: Optional[str] = None,
-        threshold: float = 0.1,
+        threshold: float = 0.05,
         device: str = "cpu",
+        min_component_pixels: int = 100,
     ):
         """Initialize fence detection service.
 
@@ -87,17 +88,19 @@ class FenceDetectionService:
             model_path: Path to HED checkpoint
                 (default: models/hed_fence_checkpoint_best.pth)
             threshold: Probability threshold for fence detection
-                (0.0-1.0, default: 0.1)
+                (0.0-1.0, default: 0.05 - lowered from 0.1)
             device: Device to run inference on ('cpu', 'cuda', 'mps')
+            min_component_pixels: Minimum component size in pixels (default: 100)
         """
         self.threshold = threshold
         self.device = device
+        self.min_component_pixels = min_component_pixels
         self._model = None
 
         # Set default model path
         if model_path is None:
             models_dir = Path(__file__).parent.parent / "models"
-            self.model_path = str(models_dir / "hed_fence_weighted_loss.pth")
+            self.model_path = str(models_dir / "hed_fence_mixed_finetune.pth")
         else:
             self.model_path = model_path
 
@@ -112,7 +115,7 @@ class FenceDetectionService:
                 f"Please ensure the model checkpoint is available."
             )
 
-        print(f"Loading HED fence detection model (weighted loss): {self.model_path}")
+        print(f"Loading HED fence detection model (mixed finetune): {self.model_path}")
 
         # Load model architecture
         self._model = HED(pretrained=False, input_channels=4)
@@ -123,7 +126,7 @@ class FenceDetectionService:
         self._model = self._model.to(self.device)
         self._model.eval()
 
-        print(f"✓ HED weighted loss model loaded on {self.device}")
+        print(f"✓ HED mixed finetune model loaded on {self.device}")
         print(f"✓ Trained for {checkpoint['epoch']} epochs")
         print(f"✓ Best val_loss: {checkpoint.get('val_loss', checkpoint.get('best_val_loss', 'N/A'))}")
         if "pos_weight" in checkpoint:
@@ -154,7 +157,7 @@ class FenceDetectionService:
             blur_sigma: Standard deviation for Gaussian blur (default: 2.0)
 
         Returns:
-            np.ndarray of shape (512, 512), dtype float32, values in [0, 1]
+            np.ndarray of shape (640, 640), dtype float32, values in [0, 1]
         """
         try:
             import cv2
@@ -166,8 +169,14 @@ class FenceDetectionService:
 
         # Parse parcel polygon
         if isinstance(parcel_polygon, dict):
-            # GeoJSON format: {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
-            coords = parcel_polygon.get("coordinates", [[]])[0]
+            # GeoJSON Feature format: {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}}
+            if "geometry" in parcel_polygon:
+                coords = parcel_polygon["geometry"].get("coordinates", [[]])[0]
+            # GeoJSON Polygon format: {"type": "Polygon", "coordinates": [[[lon, lat], ...]]}
+            elif "coordinates" in parcel_polygon:
+                coords = parcel_polygon.get("coordinates", [[]])[0]
+            else:
+                coords = []
         else:
             coords = parcel_polygon
 
@@ -175,14 +184,14 @@ class FenceDetectionService:
             print(
                 "WARNING: Invalid parcel polygon - using empty fence probability mask"
             )
-            return np.zeros((512, 512), dtype=np.float32)
+            return np.zeros((640, 640), dtype=np.float32)
 
-        # Create coordinate converter
+        # Create coordinate converter (match Google Maps image size: 640x640)
         coord_converter = ImageCoordinateConverter(
             center_lat=center_lat,
             center_lon=center_lon,
-            image_width_px=512,
-            image_height_px=512,
+            image_width_px=640,
+            image_height_px=640,
             zoom_level=zoom_level,
         )
 
@@ -192,8 +201,8 @@ class FenceDetectionService:
             x, y = coord_converter.geo_to_pixel(lon, lat)
             pixel_coords.append([int(x), int(y)])
 
-        # Create blank mask
-        mask = np.zeros((512, 512), dtype=np.uint8)
+        # Create blank mask (640x640 to match Google Maps image size)
+        mask = np.zeros((640, 640), dtype=np.uint8)
 
         # Draw parcel boundary
         if len(pixel_coords) >= 2:
@@ -308,32 +317,32 @@ class FenceDetectionService:
         """Prepare 4-channel input (RGB + fence probability).
 
         Returns:
-            np.ndarray of shape (512, 512, 4) with values in [0, 1]
+            np.ndarray of shape (640, 640, 4) with values in [0, 1]
         """
         from PIL import Image
 
         # Load RGB image
         rgb_image = Image.open(image_path).convert("RGB")
 
-        # Resize to 512x512 if needed
-        if rgb_image.size != (512, 512):
-            rgb_image = rgb_image.resize((512, 512), Image.LANCZOS)
+        # Resize to 640x640 if needed (match Google Maps image size)
+        if rgb_image.size != (640, 640):
+            rgb_image = rgb_image.resize((640, 640), Image.LANCZOS)
 
         rgb_array = np.array(rgb_image).astype(np.float32) / 255.0
 
         # Prepare fence probability channel
         if fence_probability_mask is None:
             # Generate empty mask (all zeros)
-            fence_prob = np.zeros((512, 512), dtype=np.float32)
+            fence_prob = np.zeros((640, 640), dtype=np.float32)
             print(
                 "WARNING: No fence probability mask provided - using zeros "
                 "(lower accuracy expected)"
             )
         else:
             # Normalize to [0, 1]
-            if fence_probability_mask.shape != (512, 512):
+            if fence_probability_mask.shape != (640, 640):
                 fence_prob = np.array(
-                    Image.fromarray(fence_probability_mask).resize((512, 512))
+                    Image.fromarray(fence_probability_mask).resize((640, 640))
                 ).astype(np.float32)
                 if fence_prob.max() > 1.0:
                     fence_prob = fence_prob / 255.0
@@ -343,7 +352,7 @@ class FenceDetectionService:
                     fence_prob = fence_prob / 255.0
 
         # Stack into 4 channels
-        input_4ch = np.zeros((512, 512, 4), dtype=np.float32)
+        input_4ch = np.zeros((640, 640, 4), dtype=np.float32)
         input_4ch[:, :, :3] = rgb_array  # RGB channels
         input_4ch[:, :, 3] = fence_prob  # Fence probability channel
 
@@ -371,14 +380,18 @@ class FenceDetectionService:
         # Find connected components
         labeled, num_features = ndimage.label(binary_mask)
 
-        # Create coordinate converter
+        # Create coordinate converter (640x640 to match satellite image size)
+        # Note: HED model outputs 512x512, so we need to scale coordinates back to 640x640
         coord_converter = ImageCoordinateConverter(
             center_lat=center_lat,
             center_lon=center_lon,
-            image_width_px=512,
-            image_height_px=512,
+            image_width_px=640,
+            image_height_px=640,
             zoom_level=zoom_level,
         )
+
+        # Scale factor from 512x512 (HED output) to 640x640 (satellite image)
+        scale_factor = 640 / 512
 
         polygons = []
 
@@ -387,8 +400,12 @@ class FenceDetectionService:
             component_mask = (labeled == i).astype(np.uint8) * 255
 
             # Skip very small components (noise)
-            if np.sum(component_mask > 0) < 10:
+            component_size = np.sum(component_mask > 0)
+            if component_size < self.min_component_pixels:
+                print(f"  Skipping small component {i}: {component_size} pixels (< {self.min_component_pixels})")
                 continue
+
+            print(f"  Processing component {i}: {component_size} pixels")
 
             # Find contours
             contours, _ = cv2.findContours(
@@ -400,11 +417,15 @@ class FenceDetectionService:
                     continue
 
                 # Convert pixel coordinates to geographic
+                # Scale from 512x512 to 640x640 before converting
                 geo_points = []
                 for point in contour.squeeze():
                     if point.ndim == 1 and len(point) == 2:
                         x, y = point
-                        lon, lat = coord_converter.pixel_to_geo(int(x), int(y))
+                        # Scale coordinates from 512x512 to 640x640
+                        x_scaled = int(x * scale_factor)
+                        y_scaled = int(y * scale_factor)
+                        lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
                         geo_points.append((lon, lat))
 
                 if len(geo_points) >= 3:

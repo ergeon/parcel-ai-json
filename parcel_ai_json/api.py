@@ -192,24 +192,40 @@ async def detect_property(
             import json
 
             try:
-                parcel_polygon = json.loads(regrid_parcel_polygon)
+                parcel_data = json.loads(regrid_parcel_polygon)
                 logger.info(f"Parsed Regrid parcel polygon from JSON")
 
-                # Debug logging for fence detection
-                if isinstance(parcel_polygon, dict):
-                    logger.info(
-                        f"Parcel polygon type: dict with keys {list(parcel_polygon.keys())}"
-                    )
-                    coords = parcel_polygon.get("coordinates", [[]])[0]
-                    logger.info(f"Parcel polygon coordinates: {len(coords)} points")
-                elif isinstance(parcel_polygon, list):
-                    logger.info(
-                        f"Parcel polygon type: list with {len(parcel_polygon)} points"
-                    )
+                # Handle GeoJSON Feature format (extract geometry)
+                if isinstance(parcel_data, dict):
+                    if parcel_data.get("type") == "Feature" and "geometry" in parcel_data:
+                        # Extract geometry from Feature
+                        parcel_polygon = parcel_data["geometry"]
+                        logger.info(
+                            f"Extracted geometry from GeoJSON Feature: {parcel_polygon.get('type')}"
+                        )
+                    elif "coordinates" in parcel_data:
+                        # Already a geometry object
+                        parcel_polygon = parcel_data
+                        logger.info(f"Using GeoJSON geometry: {parcel_data.get('type')}")
+                    else:
+                        logger.warning(
+                            f"Unknown parcel polygon format with keys: {list(parcel_data.keys())}"
+                        )
+                        parcel_polygon = parcel_data
+                elif isinstance(parcel_data, list):
+                    # List of coordinate tuples
+                    parcel_polygon = parcel_data
+                    logger.info(f"Using coordinate list with {len(parcel_data)} points")
                 else:
                     logger.warning(
-                        f"Unexpected parcel polygon type: {type(parcel_polygon)}"
+                        f"Unexpected parcel polygon type: {type(parcel_data)}"
                     )
+                    parcel_polygon = parcel_data
+
+                # Debug logging
+                if isinstance(parcel_polygon, dict) and "coordinates" in parcel_polygon:
+                    coords = parcel_polygon.get("coordinates", [[]])[0]
+                    logger.info(f"Parcel polygon has {len(coords)} coordinate points")
 
             except json.JSONDecodeError as e:
                 raise HTTPException(
@@ -559,7 +575,7 @@ async def detect_fences(
         None,
         description="Optional fence probability mask from Regrid (512x512 PNG/NPY)",
     ),
-    threshold: float = Form(0.1, description="Probability threshold (default: 0.1)"),
+    threshold: float = Form(0.05, description="Probability threshold (default: 0.05 - lowered for better detection)"),
 ):
     """Detect fences in satellite image using HED model.
 
