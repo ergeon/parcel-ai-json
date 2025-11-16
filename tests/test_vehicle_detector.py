@@ -125,7 +125,7 @@ class TestVehicleDetectionService:
         call_args = mock_yolo.call_args[0][0]
         assert call_args == "yolov8m-obb.pt" or call_args.endswith(
             "models/yolov8m-obb.pt"
-        ), f"Expected YOLO to be called with yolov8m-obb.pt or full path, got: {call_args}"
+        ), f"Expected YOLO with yolov8m-obb.pt, got: {call_args}"
 
     @patch("ultralytics.YOLO")
     @patch("parcel_ai_json.vehicle_detector.Path")
@@ -443,3 +443,91 @@ class TestVehicleDetectionService:
         assert geojson["features"][0]["properties"]["confidence"] == pytest.approx(
             0.85, rel=1e-5
         )
+
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_empty_obb_boxes(self, mock_image, mock_path):
+        """Test handling OBB result with empty boxes."""
+        service = VehicleDetectionService()
+
+        mock_model = Mock()
+        mock_model.names = {0: "car"}
+
+        # Mock OBB detection with empty boxes
+        mock_result = Mock()
+        mock_result.masks = None
+        mock_result.obb = Mock()
+        mock_result.obb.__len__ = Mock(return_value=0)  # Empty boxes
+
+        mock_model.return_value = [mock_result]
+        service._model = mock_model
+
+        mock_path_obj = Mock()
+        mock_path_obj.exists.return_value = True
+        mock_path.return_value = mock_path_obj
+
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
+
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
+
+        assert len(detections) == 0
+
+    @patch("parcel_ai_json.vehicle_detector.Path")
+    @patch("PIL.Image")
+    def test_detect_vehicles_obb_filter_non_vehicles(self, mock_image, mock_path):
+        """Test filtering non-vehicles in OBB format."""
+        service = VehicleDetectionService()
+
+        mock_model = Mock()
+        mock_model.names = {0: "person", 1: "car"}
+
+        # Mock OBB detection with person and car
+        mock_result = Mock()
+        mock_result.masks = None
+        mock_result.obb = Mock()
+        mock_result.obb.__len__ = Mock(return_value=2)
+
+        # Mock tensor attributes for OBB
+        mock_result.obb.cls = [
+            Mock(item=Mock(return_value=0)),  # person
+            Mock(item=Mock(return_value=1)),  # car
+        ]
+        mock_result.obb.conf = [
+            Mock(item=Mock(return_value=0.95)),
+            Mock(item=Mock(return_value=0.85)),
+        ]
+        mock_result.obb.xyxy = [
+            Mock(tolist=Mock(return_value=[10, 20, 30, 40])),
+            Mock(tolist=Mock(return_value=[100, 200, 150, 250])),
+        ]
+
+        mock_model.return_value = [mock_result]
+        service._model = mock_model
+
+        mock_path_obj = Mock()
+        mock_path_obj.exists.return_value = True
+        mock_path.return_value = mock_path_obj
+
+        mock_img = Mock()
+        mock_img.size = (512, 512)
+        mock_image.open.return_value.__enter__.return_value = mock_img
+
+        satellite_image = {
+            "path": "/path/to/image.jpg",
+            "center_lat": 37.0,
+            "center_lon": -122.0,
+        }
+
+        detections = service.detect_vehicles(satellite_image)
+
+        # Should only detect car, not person
+        assert len(detections) == 1
+        assert detections[0].class_name == "car"
