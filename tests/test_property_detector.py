@@ -211,7 +211,7 @@ class TestPropertyDetectionService(unittest.TestCase):
         self.assertEqual(service.vehicle_detector.confidence_threshold, 0.2)
         self.assertEqual(service.pool_detector.confidence_threshold, 0.25)
         self.assertEqual(service.amenity_detector.confidence_threshold, 0.35)
-        # Check tree detector (Combined service) - check deepforest and detectree sub-services
+        # Check tree detector (deepforest and detectree sub-services)
         self.assertEqual(service.tree_detector.deepforest.confidence_threshold, 0.15)
         self.assertEqual(
             service.tree_detector.deepforest.model_name, "custom/tree-model"
@@ -349,6 +349,155 @@ class TestPropertyDetectionService(unittest.TestCase):
         self.assertEqual(len(geojson["features"]), 0)
         self.assertIn("trees", geojson)
         self.assertEqual(geojson["trees"]["tree_count"], 0)
+
+    def test_to_geojson_with_tree_polygons(self):
+        """Test GeoJSON output with tree polygons (detectree)."""
+        from parcel_ai_json.tree_detector import TreePolygon
+
+        tree_polygons = [
+            TreePolygon(
+                geo_polygon=[
+                    (-122.4194, 37.7749),
+                    (-122.4193, 37.7749),
+                    (-122.4193, 37.7748),
+                    (-122.4194, 37.7748),
+                    (-122.4194, 37.7749),
+                ],
+                pixel_polygon=[(100, 100), (150, 100), (150, 150), (100, 150)],
+                area_sqm=50.5,
+                area_pixels=2500,
+            )
+        ]
+
+        trees = TreeDetection(
+            trees=[],
+            tree_count=0,
+            tree_pixel_count=5000,
+            total_pixels=262144,
+            tree_coverage_percent=1.91,
+            tree_polygons=tree_polygons,
+        )
+
+        detections = PropertyDetections(
+            vehicles=[],
+            swimming_pools=[],
+            amenities=[],
+            trees=trees,
+        )
+
+        geojson = detections.to_geojson()
+
+        # Should include tree polygon features
+        self.assertEqual(len(geojson["features"]), 1)
+        self.assertEqual(
+            geojson["features"][0]["properties"]["feature_type"],
+            "tree_cluster"
+        )
+        self.assertEqual(
+            geojson["trees"]["tree_coverage_percent"],
+            1.91
+        )
+
+    def test_to_geojson_with_fences(self):
+        """Test GeoJSON output with fence detections."""
+        from parcel_ai_json.fence_detector import FenceDetection
+        import numpy as np
+
+        fence_detection = FenceDetection(
+            probability_mask=np.zeros((512, 512), dtype=np.float32),
+            binary_mask=np.zeros((512, 512), dtype=np.uint8),
+            geo_polygons=[
+                [
+                    (-122.4194, 37.7749),
+                    (-122.4193, 37.7749),
+                    (-122.4193, 37.7748),
+                    (-122.4194, 37.7748),
+                    (-122.4194, 37.7749),
+                ]
+            ],
+            max_probability=0.75,
+            mean_probability=0.08,
+            fence_pixel_count=300,
+            threshold=0.1,
+        )
+
+        trees = TreeDetection(trees=[], tree_count=0)
+
+        detections = PropertyDetections(
+            vehicles=[],
+            swimming_pools=[],
+            amenities=[],
+            trees=trees,
+            fences=fence_detection,
+        )
+
+        geojson = detections.to_geojson()
+
+        # Should include fence features
+        self.assertGreater(len(geojson["features"]), 0)
+        fence_features = [
+            f for f in geojson["features"]
+            if f["properties"]["feature_type"] == "fence"
+        ]
+        self.assertEqual(len(fence_features), 1)
+
+    def test_summary_with_tree_polygons_and_fences(self):
+        """Test summary with tree polygons and fences."""
+        from parcel_ai_json.tree_detector import TreePolygon
+        from parcel_ai_json.fence_detector import FenceDetection
+        import numpy as np
+
+        tree_polygons = [
+            TreePolygon(
+                geo_polygon=[(-122.4194, 37.7749), (-122.4193, 37.7749)],
+                pixel_polygon=[(100, 100), (150, 100)],
+                area_sqm=50.5,
+                area_pixels=2500,
+            ),
+            TreePolygon(
+                geo_polygon=[(-122.4195, 37.7750), (-122.4194, 37.7750)],
+                pixel_polygon=[(200, 200), (250, 200)],
+                area_sqm=45.0,
+                area_pixels=2000,
+            ),
+        ]
+
+        trees = TreeDetection(
+            trees=[],
+            tree_count=0,
+            tree_pixel_count=5000,
+            total_pixels=262144,
+            tree_coverage_percent=1.91,
+            tree_polygons=tree_polygons,
+        )
+
+        fence_detection = FenceDetection(
+            probability_mask=np.zeros((512, 512), dtype=np.float32),
+            binary_mask=np.zeros((512, 512), dtype=np.uint8),
+            geo_polygons=[
+                [(-122.4194, 37.7749), (-122.4193, 37.7749)],
+                [(-122.4195, 37.7750), (-122.4194, 37.7750)],
+            ],
+            max_probability=0.75,
+            mean_probability=0.08,
+            fence_pixel_count=300,
+            threshold=0.1,
+        )
+
+        detections = PropertyDetections(
+            vehicles=[],
+            swimming_pools=[],
+            amenities=[],
+            trees=trees,
+            fences=fence_detection,
+        )
+
+        summary = detections.summary()
+
+        self.assertEqual(summary["tree_coverage_percent"], 1.91)
+        self.assertEqual(summary["tree_polygon_count"], 2)
+        self.assertEqual(summary["fence_pixel_count"], 300)
+        self.assertEqual(summary["fence_segment_count"], 2)
 
 
 if __name__ == "__main__":
