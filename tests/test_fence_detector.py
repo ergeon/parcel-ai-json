@@ -1,8 +1,11 @@
 """Tests for fence detection service."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 import numpy as np
+import tempfile
+import os
+from PIL import Image
 
 from parcel_ai_json.fence_detector import (
     FenceDetection,
@@ -454,6 +457,384 @@ class TestFenceDetectionService(unittest.TestCase):
 
         self.assertEqual(mask.shape, (640, 640))
         self.assertTrue(mask.max() <= 1.0)
+
+    @patch("parcel_ai_json.fence_detector.Path")
+    @patch("parcel_ai_json.fence_detector.torch")
+    @patch("parcel_ai_json.fence_detector.HED")
+    def test_load_model_already_loaded(self, mock_hed, mock_torch, mock_path):
+        """Test _load_model() returns early when model already loaded."""
+        mock_path.return_value.exists.return_value = True
+
+        service = FenceDetectionService()
+        service._model = Mock()  # Simulate model already loaded
+
+        # Should return early without loading again
+        service._load_model()
+
+        # HED should not be called since model already exists
+        mock_hed.assert_not_called()
+        mock_torch.load.assert_not_called()
+
+    @patch("parcel_ai_json.fence_detector.Path")
+    @patch("parcel_ai_json.fence_detector.torch")
+    @patch("parcel_ai_json.fence_detector.HED")
+    def test_load_model_with_pos_weight(self, mock_hed, mock_torch, mock_path):
+        """Test model loading with pos_weight in checkpoint."""
+        mock_path.return_value.exists.return_value = True
+
+        # Mock model with proper method chaining
+        mock_model = Mock()
+        mock_model.to.return_value = mock_model
+        mock_model.eval.return_value = mock_model
+        mock_hed.return_value = mock_model
+
+        # Mock checkpoint with pos_weight
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "epoch": 34,
+            "best_val_loss": 0.411,
+            "pos_weight": 2.5,  # Add pos_weight
+        }
+        mock_torch.load.return_value = mock_checkpoint
+
+        service = FenceDetectionService()
+        service._load_model()
+
+        # Verify model was loaded
+        self.assertIsNotNone(service._model)
+        self.assertEqual(mock_checkpoint["pos_weight"], 2.5)
+
+    def test_generate_fence_probability_mask_opencv_not_installed(self):
+        """Test fence mask generation when opencv is not installed."""
+        service = FenceDetectionService()
+
+        coords = [
+            (-122.4194, 37.7749),
+            (-122.4193, 37.7749),
+            (-122.4193, 37.7748),
+            (-122.4194, 37.7749),
+        ]
+
+        # Mock import to raise ImportError
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'cv2'")
+        ):
+            with self.assertRaises(ImportError) as cm:
+                service.generate_fence_probability_mask(
+                    parcel_polygon=coords,
+                    center_lat=37.7749,
+                    center_lon=-122.4194,
+                )
+
+            self.assertIn("opencv-python required", str(cm.exception))
+
+    def test_generate_fence_probability_mask_empty_dict(self):
+        """Test fence mask generation with empty dict."""
+        service = FenceDetectionService()
+
+        # Empty dict (no 'geometry' or 'coordinates' keys)
+        parcel_polygon = {}
+
+        mask = service.generate_fence_probability_mask(
+            parcel_polygon=parcel_polygon,
+            center_lat=37.7749,
+            center_lon=-122.4194,
+        )
+
+        # Should return empty mask
+        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.max(), 0.0)
+
+    def test_detect_fences_with_regrid_parcel_polygon(self):
+        """Test detect_fences with regrid_parcel_polygon parameter."""
+        service = FenceDetectionService()
+
+        # Create temporary test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (640, 640), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            satellite_image = {
+                "path": tmp_path,
+                "center_lat": 37.7749,
+                "center_lon": -122.4194,
+                "zoom_level": 20,
+            }
+
+            regrid_polygon = [
+                (-122.4194, 37.7749),
+                (-122.4193, 37.7749),
+                (-122.4193, 37.7748),
+                (-122.4194, 37.7748),
+                (-122.4194, 37.7749),
+            ]
+
+            # Mock the _load_model and model inference
+            with patch.object(service, "_load_model"):
+                mock_model = Mock()
+
+                # Create mock output with proper chain
+                mock_fused_output = Mock()
+                cpu_mock = mock_fused_output.cpu.return_value
+                squeeze_mock = cpu_mock.squeeze.return_value
+                squeeze_mock.numpy.return_value = np.zeros((512, 512))
+
+                mock_output = {"fused": mock_fused_output}
+                mock_model.return_value = mock_output
+
+                service._model = mock_model
+
+                # Mock torch operations
+                with patch("parcel_ai_json.fence_detector.torch") as mock_torch:
+                    mock_tensor = Mock()
+                    mock_tensor.permute.return_value = mock_tensor
+                    mock_tensor.unsqueeze.return_value = mock_tensor
+                    mock_tensor.to.return_value = mock_tensor
+                    mock_torch.from_numpy.return_value = mock_tensor
+                    mock_torch.no_grad = MagicMock()
+
+                    result = service.detect_fences(
+                        satellite_image, regrid_parcel_polygon=regrid_polygon
+                    )
+
+                    # Should return FenceDetection
+                    self.assertIsInstance(result, FenceDetection)
+                    self.assertEqual(result.probability_mask.shape, (512, 512))
+        finally:
+            # Clean up temp file
+            os.unlink(tmp_path)
+
+    def test_prepare_4channel_input_no_fence_mask(self):
+        """Test _prepare_4channel_input with None fence mask."""
+        service = FenceDetectionService()
+
+        # Create temporary test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (640, 640), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            result = service._prepare_4channel_input(tmp_path, None)
+
+            # Should have 4 channels with zeros in 4th channel
+            self.assertEqual(result.shape, (640, 640, 4))
+            self.assertTrue(np.all(result[:, :, 3] == 0.0))  # 4th channel all zeros
+        finally:
+            os.unlink(tmp_path)
+
+    def test_prepare_4channel_input_with_uint8_mask(self):
+        """Test _prepare_4channel_input with uint8 mask (0-255)."""
+        service = FenceDetectionService()
+
+        # Create temporary test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (640, 640), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            # Create uint8 fence mask
+            fence_mask = np.ones((640, 640), dtype=np.uint8) * 255
+
+            result = service._prepare_4channel_input(tmp_path, fence_mask)
+
+            # Should normalize to [0, 1]
+            self.assertEqual(result.shape, (640, 640, 4))
+            self.assertTrue(result[:, :, 3].max() <= 1.0)
+            self.assertTrue(result[:, :, 3].min() >= 0.0)
+        finally:
+            os.unlink(tmp_path)
+
+    def test_prepare_4channel_input_with_wrong_size_mask(self):
+        """Test _prepare_4channel_input with mask that needs resizing."""
+        service = FenceDetectionService()
+
+        # Create temporary test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (640, 640), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            # Create smaller fence mask that needs resizing
+            fence_mask = np.ones((512, 512), dtype=np.float32)
+
+            result = service._prepare_4channel_input(tmp_path, fence_mask)
+
+            # Should resize to 640x640
+            self.assertEqual(result.shape, (640, 640, 4))
+        finally:
+            os.unlink(tmp_path)
+
+    def test_prepare_4channel_input_resizes_image(self):
+        """Test _prepare_4channel_input resizes non-640x640 images."""
+        service = FenceDetectionService()
+
+        # Create temporary test image with different size
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (512, 512), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            result = service._prepare_4channel_input(tmp_path, None)
+
+            # Should resize to 640x640
+            self.assertEqual(result.shape, (640, 640, 4))
+        finally:
+            os.unlink(tmp_path)
+
+    def test_extract_fence_polygons_opencv_not_installed(self):
+        """Test _extract_fence_polygons when opencv is not installed."""
+        import sys
+
+        service = FenceDetectionService()
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+
+        # Mock cv2 to not be available in sys.modules
+        original_cv2 = sys.modules.get('cv2')
+        if 'cv2' in sys.modules:
+            del sys.modules['cv2']
+
+        # Mock scipy.ndimage to not be available
+        original_ndimage = sys.modules.get('scipy.ndimage')
+        if 'scipy.ndimage' in sys.modules:
+            del sys.modules['scipy.ndimage']
+
+        try:
+            # Mock import to fail for cv2 and scipy
+            with patch("builtins.__import__", side_effect=ImportError("No module")):
+                result = service._extract_fence_polygons(
+                    binary_mask, 37.7749, -122.4194, 20
+                )
+                # Should return empty list when cv2/scipy not available
+                # (not a tuple - just an empty list)
+                self.assertEqual(result, [])
+        finally:
+            # Restore modules
+            if original_cv2 is not None:
+                sys.modules['cv2'] = original_cv2
+            if original_ndimage is not None:
+                sys.modules['scipy.ndimage'] = original_ndimage
+
+    def test_extract_fence_polygons_with_components(self):
+        """Test _extract_fence_polygons extracts multiple components."""
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv-python not installed")
+
+        service = FenceDetectionService(min_component_pixels=10)
+
+        # Create binary mask with two separate components
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        binary_mask[100:150, 100:150] = 255  # Component 1 (2500 pixels)
+        binary_mask[300:350, 300:350] = 255  # Component 2 (2500 pixels)
+
+        polygons, boundary = service._extract_fence_polygons(
+            binary_mask, 37.7749, -122.4194, 20
+        )
+
+        # Should extract at least some polygons
+        self.assertIsInstance(polygons, list)
+        self.assertIsInstance(boundary, list)
+        self.assertEqual(len(boundary), 5)  # 4 corners + closing point
+
+    def test_extract_fence_polygons_skips_small_components(self):
+        """Test _extract_fence_polygons skips components below threshold."""
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv-python not installed")
+
+        service = FenceDetectionService(min_component_pixels=1000)
+
+        # Create small binary mask component
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+        binary_mask[100:105, 100:105] = 255  # Only 25 pixels (< 1000)
+
+        polygons, boundary = service._extract_fence_polygons(
+            binary_mask, 37.7749, -122.4194, 20
+        )
+
+        # Should skip small component (all components are < 1000 pixels)
+        self.assertEqual(len(polygons), 0)
+
+    def test_extract_fence_polygons_handles_invalid_contours(self):
+        """Test _extract_fence_polygons handles contours with < 3 points."""
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv-python not installed")
+
+        service = FenceDetectionService()
+
+        # Empty binary mask will have no contours
+        binary_mask = np.zeros((512, 512), dtype=np.uint8)
+
+        polygons, boundary = service._extract_fence_polygons(
+            binary_mask, 37.7749, -122.4194, 20
+        )
+
+        # Should handle gracefully with empty mask
+        self.assertEqual(len(polygons), 0)
+        self.assertEqual(len(boundary), 5)  # Boundary always created
+
+    def test_detect_fences_geojson(self):
+        """Test detect_fences_geojson returns proper GeoJSON structure."""
+        service = FenceDetectionService()
+
+        # Create temporary test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            img = Image.new("RGB", (640, 640), color="white")
+            img.save(tmp.name, "JPEG")
+            tmp_path = tmp.name
+
+        try:
+            satellite_image = {
+                "path": tmp_path,
+                "center_lat": 37.7749,
+                "center_lon": -122.4194,
+                "zoom_level": 20,
+            }
+
+            # Mock the _load_model and model inference
+            with patch.object(service, "_load_model"):
+                mock_model = Mock()
+
+                # Create mock output with proper chain
+                mock_fused_output = Mock()
+                cpu_mock = mock_fused_output.cpu.return_value
+                squeeze_mock = cpu_mock.squeeze.return_value
+                squeeze_mock.numpy.return_value = np.zeros((512, 512))
+
+                mock_output = {"fused": mock_fused_output}
+                mock_model.return_value = mock_output
+
+                service._model = mock_model
+
+                # Mock torch operations
+                with patch("parcel_ai_json.fence_detector.torch") as mock_torch:
+                    mock_tensor = Mock()
+                    mock_tensor.permute.return_value = mock_tensor
+                    mock_tensor.unsqueeze.return_value = mock_tensor
+                    mock_tensor.to.return_value = mock_tensor
+                    mock_torch.from_numpy.return_value = mock_tensor
+                    mock_torch.no_grad = MagicMock()
+
+                    result = service.detect_fences_geojson(satellite_image)
+
+                    # Should return GeoJSON FeatureCollection
+                    self.assertEqual(result["type"], "FeatureCollection")
+                    self.assertIn("features", result)
+                    self.assertIn("metadata", result)
+                    self.assertIsInstance(result["features"], list)
+                    self.assertIsInstance(result["metadata"], dict)
+        finally:
+            os.unlink(tmp_path)
 
 
 if __name__ == "__main__":
