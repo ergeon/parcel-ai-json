@@ -46,10 +46,7 @@ class FenceDetection:
             "fence_segment_count": len(self.geo_polygons),
         }
 
-    def to_geojson_features(
-        self,
-        include_debug_boundary: bool = True
-    ) -> List[Dict]:
+    def to_geojson_features(self, include_debug_boundary: bool = True) -> List[Dict]:
         """Convert to list of GeoJSON features (one per fence segment).
 
         Args:
@@ -88,8 +85,7 @@ class FenceDetection:
                     "properties": {
                         "feature_type": "fence_debug_boundary",
                         "description": (
-                            "HED mask boundary "
-                            "(512x512 scaled to 640x640)"
+                            "HED mask boundary " "(512x512 scaled to 640x640)"
                         ),
                     },
                 }
@@ -169,13 +165,10 @@ class FenceDetectionService:
 
         print(f"✓ HED mixed finetune model loaded on {self.device}")
         print(f"✓ Trained for {checkpoint['epoch']} epochs")
-        val_loss = checkpoint.get(
-            'val_loss',
-            checkpoint.get('best_val_loss', 'N/A')
-        )
+        val_loss = checkpoint.get("val_loss", checkpoint.get("best_val_loss", "N/A"))
         print(f"✓ Best val_loss: {val_loss}")
         if "pos_weight" in checkpoint:
-            pos_weight = checkpoint['pos_weight']
+            pos_weight = checkpoint["pos_weight"]
             print(f"✓ Pos weight (false negative penalty): {pos_weight}")
 
     def generate_fence_probability_mask(
@@ -234,8 +227,7 @@ class FenceDetectionService:
                 "WARNING: Invalid parcel polygon - using empty fence probability mask"
             )
             return np.zeros(
-                (self.SATELLITE_IMAGE_SIZE, self.SATELLITE_IMAGE_SIZE),
-                dtype=np.float32
+                (self.SATELLITE_IMAGE_SIZE, self.SATELLITE_IMAGE_SIZE), dtype=np.float32
             )
 
         # Create coordinate converter using factory method
@@ -246,9 +238,7 @@ class FenceDetectionService:
             "height_px": self.SATELLITE_IMAGE_SIZE,
             "zoom_level": zoom_level,
         }
-        coord_converter = ImageCoordinateConverter.from_satellite_image(
-            image_metadata
-        )
+        coord_converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
 
         # Convert geographic coords to pixel coords
         pixel_coords = []
@@ -446,9 +436,7 @@ class FenceDetectionService:
             "height_px": self.SATELLITE_IMAGE_SIZE,
             "zoom_level": zoom_level,
         }
-        coord_converter = ImageCoordinateConverter.from_satellite_image(
-            image_metadata
-        )
+        coord_converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
 
         # Scale factor from HED output to satellite image
         scale_factor = self.HED_TO_SATELLITE_SCALE
@@ -495,9 +483,7 @@ class FenceDetectionService:
                         # Add to satellite center
                         x_scaled = self.SATELLITE_CENTER_PX + scaled_offset_x
                         y_scaled = self.SATELLITE_CENTER_PX + scaled_offset_y
-                        lon, lat = coord_converter.pixel_to_geo(
-                            x_scaled, y_scaled
-                        )
+                        lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
                         geo_points.append((lon, lat))
 
                 if len(geo_points) >= 3:
@@ -510,11 +496,11 @@ class FenceDetectionService:
         # mapped to satellite space
         hed_max = self.HED_MODEL_OUTPUT_SIZE
         boundary_coords = [
-            (0, 0),              # Top-left
-            (hed_max, 0),        # Top-right
+            (0, 0),  # Top-left
+            (hed_max, 0),  # Top-right
             (hed_max, hed_max),  # Bottom-right
-            (0, hed_max),        # Bottom-left
-            (0, 0),              # Close
+            (0, hed_max),  # Bottom-left
+            (0, 0),  # Close
         ]
         boundary_geo = []
         for x, y in boundary_coords:

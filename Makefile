@@ -59,18 +59,19 @@ format-check: ## Check code formatting without making changes
 
 check: format-check lint test ## Run all checks (format, lint, test)
 
-clean: ## Clean up generated files
+clean: ## Clean up generated files, build artifacts, and cache
+	@echo "Cleaning up build artifacts and cache files..."
 	rm -rf htmlcov/
 	rm -rf .coverage
 	rm -rf .pytest_cache/
-	rm -rf __pycache__/
-	rm -rf parcel_ai_json/__pycache__/
-	rm -rf tests/__pycache__/
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type f -name ".DS_Store" -delete 2>/dev/null || true
+	find . -type d -name ".idea" -exec rm -rf {} + 2>/dev/null || true
+	@echo "Cleanup complete!"
 
 clean-all: clean ## Clean everything including virtualenv
 	rm -rf $(VENV)
@@ -92,8 +93,8 @@ dev-setup: install ## Set up development environment
 
 # Package build and deployment targets
 
-install-ci: ## Install CI dependencies (twine, wheel)
-	$(PIP) install -r requirements_ci.txt
+install-ci: ## Install deployment dependencies (twine, wheel)
+	$(PIP) install -e ".[deploy]"
 	$(PIP) install setuptools
 
 build: ## Build source and wheel distributions

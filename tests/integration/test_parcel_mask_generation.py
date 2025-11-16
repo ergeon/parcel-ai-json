@@ -9,12 +9,8 @@ import numpy as np
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.fence_detector import (  # noqa: E402
-    FenceDetectionService
-)
-from parcel_ai_json.coordinate_converter import (  # noqa: E402
-    ImageCoordinateConverter
-)
+from parcel_ai_json.fence_detector import FenceDetectionService  # noqa: E402
+from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 # Load parcel polygon
 parcel_json_path = (
@@ -106,6 +102,7 @@ if mask.max() > 0:
 
     # Save mask for visual inspection
     from PIL import Image
+
     mask_uint8 = (mask * 255).astype(np.uint8)
     Image.fromarray(mask_uint8).save("/tmp/test_parcel_mask.png")
     print("✓ Saved mask to /tmp/test_parcel_mask.png")

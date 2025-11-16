@@ -406,8 +406,8 @@ def create_enhanced_folium_map(image_path: str, output_path: str):
         folium.Polygon(
             locations=[(lat, lon) for lon, lat in coords],
             color="#FF0000",  # Bright red
-            weight=4,         # Thick line
-            fill=False,       # No fill - just outline
+            weight=4,  # Thick line
+            fill=False,  # No fill - just outline
             popup=folium.Popup(
                 f"<b>HED Mask Boundary (Debug)</b><br>"
                 f"{props.get('description', 'HED mask extent')}<br>"

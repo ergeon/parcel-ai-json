@@ -273,5 +273,6 @@ class TestTreeDetectionService(unittest.TestCase):
         # Should find no polygons
         self.assertEqual(len(polygons), 0)
 
+
 if __name__ == "__main__":
     unittest.main()

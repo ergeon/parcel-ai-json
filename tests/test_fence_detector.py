@@ -211,20 +211,22 @@ class TestFenceDetectionService(unittest.TestCase):
 
         parcel_polygon = {
             "type": "Polygon",
-            "coordinates": [[
-                [-122.4194, 37.7749],
-                [-122.4193, 37.7749],
-                [-122.4193, 37.7748],
-                [-122.4194, 37.7748],
-                [-122.4194, 37.7749],
-            ]]
+            "coordinates": [
+                [
+                    [-122.4194, 37.7749],
+                    [-122.4193, 37.7749],
+                    [-122.4193, 37.7748],
+                    [-122.4194, 37.7748],
+                    [-122.4194, 37.7749],
+                ]
+            ],
         }
 
         mask = service.generate_fence_probability_mask(
             parcel_polygon=parcel_polygon,
             center_lat=37.7749,
             center_lon=-122.4194,
-            zoom_level=20
+            zoom_level=20,
         )
 
         self.assertEqual(mask.shape, (640, 640))
@@ -249,7 +251,7 @@ class TestFenceDetectionService(unittest.TestCase):
             parcel_polygon=coords,
             center_lat=37.7749,
             center_lon=-122.4194,
-            zoom_level=20
+            zoom_level=20,
         )
 
         self.assertEqual(mask.shape, (640, 640))
@@ -263,21 +265,23 @@ class TestFenceDetectionService(unittest.TestCase):
             "type": "Feature",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [[
-                    [-122.4194, 37.7749],
-                    [-122.4193, 37.7749],
-                    (-122.4193, 37.7748),
-                    (-122.4194, 37.7748),
-                    (-122.4194, 37.7749),
-                ]]
-            }
+                "coordinates": [
+                    [
+                        [-122.4194, 37.7749],
+                        [-122.4193, 37.7749],
+                        (-122.4193, 37.7748),
+                        (-122.4194, 37.7748),
+                        (-122.4194, 37.7749),
+                    ]
+                ],
+            },
         }
 
         mask = service.generate_fence_probability_mask(
             parcel_polygon=parcel_feature,
             center_lat=37.7749,
             center_lon=-122.4194,
-            zoom_level=20
+            zoom_level=20,
         )
 
         self.assertEqual(mask.shape, (640, 640))
@@ -288,10 +292,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Empty polygon should return zeros
         mask = service.generate_fence_probability_mask(
-            parcel_polygon=[],
-            center_lat=37.7749,
-            center_lon=-122.4194,
-            zoom_level=20
+            parcel_polygon=[], center_lat=37.7749, center_lon=-122.4194, zoom_level=20
         )
 
         self.assertEqual(mask.shape, (640, 640))
@@ -311,7 +312,7 @@ class TestFenceDetectionService(unittest.TestCase):
             parcel_polygon=coords,
             center_lat=37.7749,
             center_lon=-122.4194,
-            zoom_level=20
+            zoom_level=20,
         )
 
         # Should return empty mask
@@ -326,10 +327,7 @@ class TestFenceDetectionService(unittest.TestCase):
             [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)],
         ]
 
-        debug_boundary = [
-            (-122.4194, 37.7749),
-            (-122.4193, 37.7748)
-        ]
+        debug_boundary = [(-122.4194, 37.7749), (-122.4193, 37.7748)]
 
         detection = FenceDetection(
             probability_mask=prob_mask,
@@ -343,9 +341,7 @@ class TestFenceDetectionService(unittest.TestCase):
         )
 
         # Without debug boundary
-        features = detection.to_geojson_features(
-            include_debug_boundary=False
-        )
+        features = detection.to_geojson_features(include_debug_boundary=False)
 
         # Should only have fence features, not debug boundary
         self.assertEqual(len(features), 1)
@@ -384,13 +380,9 @@ class TestFenceDetectionService(unittest.TestCase):
         self.assertEqual(len(features), 2)
         self.assertEqual(features[0]["properties"]["feature_type"], "fence")
         self.assertEqual(
-            features[1]["properties"]["feature_type"],
-            "fence_debug_boundary"
+            features[1]["properties"]["feature_type"], "fence_debug_boundary"
         )
-        self.assertEqual(
-            features[1]["geometry"]["coordinates"],
-            [debug_boundary]
-        )
+        self.assertEqual(features[1]["geometry"]["coordinates"], [debug_boundary])
 
     def test_fence_detection_to_geojson_without_debug_boundary_set(self):
         """Test to_geojson_features when debug_boundary is None."""
@@ -412,9 +404,7 @@ class TestFenceDetectionService(unittest.TestCase):
         )
 
         # Should not include debug boundary when it's None
-        features = detection.to_geojson_features(
-            include_debug_boundary=True
-        )
+        features = detection.to_geojson_features(include_debug_boundary=True)
 
         self.assertEqual(len(features), 1)
         self.assertEqual(features[0]["properties"]["feature_type"], "fence")

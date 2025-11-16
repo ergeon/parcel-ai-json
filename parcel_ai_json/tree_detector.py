@@ -398,9 +398,7 @@ class DetectreeService:
             "width_px": image_width,
             "height_px": image_height,
         }
-        converter = ImageCoordinateConverter.from_satellite_image(
-            image_metadata
-        )
+        converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
 
         # Initialize geoid for area calculations
         geod = Geod(ellps="WGS84")

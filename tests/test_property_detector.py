@@ -390,13 +390,9 @@ class TestPropertyDetectionService(unittest.TestCase):
         # Should include tree polygon features
         self.assertEqual(len(geojson["features"]), 1)
         self.assertEqual(
-            geojson["features"][0]["properties"]["feature_type"],
-            "tree_cluster"
+            geojson["features"][0]["properties"]["feature_type"], "tree_cluster"
         )
-        self.assertEqual(
-            geojson["trees"]["tree_coverage_percent"],
-            1.91
-        )
+        self.assertEqual(geojson["trees"]["tree_coverage_percent"], 1.91)
 
     def test_to_geojson_with_fences(self):
         """Test GeoJSON output with fence detections."""
@@ -436,8 +432,7 @@ class TestPropertyDetectionService(unittest.TestCase):
         # Should include fence features
         self.assertGreater(len(geojson["features"]), 0)
         fence_features = [
-            f for f in geojson["features"]
-            if f["properties"]["feature_type"] == "fence"
+            f for f in geojson["features"] if f["properties"]["feature_type"] == "fence"
         ]
         self.assertEqual(len(fence_features), 1)
 

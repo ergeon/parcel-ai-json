@@ -51,9 +51,7 @@ class TestGetImageDimensions(unittest.TestCase):
 
             satellite_image = {}
 
-            width, height = get_image_dimensions(
-                satellite_image, image_path=tmp_path
-            )
+            width, height = get_image_dimensions(satellite_image, image_path=tmp_path)
 
             self.assertEqual(width, 1024)
             self.assertEqual(height, 768)

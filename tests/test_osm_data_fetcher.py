@@ -57,10 +57,7 @@ class TestOSMBuilding(unittest.TestCase):
 
         self.assertEqual(feature["type"], "Feature")
         self.assertEqual(feature["geometry"]["type"], "Polygon")
-        self.assertEqual(
-            feature["geometry"]["coordinates"],
-            [geo_polygon]
-        )
+        self.assertEqual(feature["geometry"]["coordinates"], [geo_polygon])
         self.assertEqual(feature["properties"]["osm_id"], 123456)
         self.assertEqual(feature["properties"]["building_type"], "house")
         self.assertEqual(feature["properties"]["feature_type"], "osm_building")

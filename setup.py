@@ -44,6 +44,10 @@ setup(
             "black>=23.0.0",
             "flake8>=6.0.0",
         ],
+        "deploy": [
+            "twine>=6.0.1",
+            "wheel>=0.37.1",
+        ],
     },
     # Models are auto-downloaded by ultralytics on first use to ~/.ultralytics/
     # Do not bundle models in package to keep package size small

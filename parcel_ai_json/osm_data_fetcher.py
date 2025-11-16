@@ -171,9 +171,7 @@ class OSMDataFetcher:
             "height_px": image_height_px,
             "zoom_level": zoom_level,
         }
-        converter = ImageCoordinateConverter.from_satellite_image(
-            image_metadata
-        )
+        converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
 
         # Get corners
         top_left = converter.pixel_to_geo(0, 0)

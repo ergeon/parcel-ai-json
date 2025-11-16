@@ -10,8 +10,7 @@ from pyproj import CRS, Geod
 
 
 def get_image_dimensions(
-    satellite_image: Dict,
-    image_path: Optional[str] = None
+    satellite_image: Dict, image_path: Optional[str] = None
 ) -> Tuple[int, int]:
     """Get image dimensions from metadata or file.
 
@@ -38,6 +37,7 @@ def get_image_dimensions(
 
         try:
             from PIL import Image
+
             with Image.open(image_path) as img:
                 return img.size
         except ImportError:
@@ -96,10 +96,8 @@ class ImageCoordinateConverter:
 
     @classmethod
     def from_satellite_image(
-        cls,
-        satellite_image: Dict,
-        image_path: Optional[str] = None
-    ) -> 'ImageCoordinateConverter':
+        cls, satellite_image: Dict, image_path: Optional[str] = None
+    ) -> "ImageCoordinateConverter":
         """Create converter from satellite image metadata.
 
         Factory method that extracts dimensions and creates converter.

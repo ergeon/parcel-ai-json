@@ -7,9 +7,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.coordinate_converter import (  # noqa: E402
-    ImageCoordinateConverter
-)
+from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 # Test coordinates for 43 Goldeneye Ct
 center_lat = 38.180297

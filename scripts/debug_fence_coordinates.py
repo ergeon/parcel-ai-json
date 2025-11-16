@@ -18,16 +18,14 @@ zoom_level = 20
 
 # Load GeoJSON to see fence coordinates
 geojson_path = Path(
-    "output/examples/geojson/"
-    "43_goldeneye_ct_american_canyon_ca_94503_usa.geojson"
+    "output/examples/geojson/" "43_goldeneye_ct_american_canyon_ca_94503_usa.geojson"
 )
 with open(geojson_path) as f:
     geojson = json.load(f)
 
 # Load satellite image
 image_path = Path(
-    "output/examples/images/"
-    "43_goldeneye_ct_american_canyon_ca_94503_usa.jpg"
+    "output/examples/images/" "43_goldeneye_ct_american_canyon_ca_94503_usa.jpg"
 )
 satellite_img = Image.open(image_path)
 
@@ -50,8 +48,7 @@ converter = ImageCoordinateConverter(
 
 # Extract fence features
 fence_features = [
-    f for f in geojson["features"]
-    if f["properties"].get("type") == "fence"
+    f for f in geojson["features"] if f["properties"].get("type") == "fence"
 ]
 print(f"Found {len(fence_features)} fence features")
 print()

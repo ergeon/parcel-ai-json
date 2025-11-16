@@ -19,6 +19,16 @@ class TestAPI(unittest.TestCase):
         """Set up test client."""
         self.client = TestClient(app)
 
+    def test_root_endpoint(self):
+        """Test root endpoint."""
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("service", data)
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "running")
+
     def test_health_endpoint(self):
         """Test health check endpoint."""
         response = self.client.get("/health")
@@ -261,11 +271,7 @@ class TestAPI(unittest.TestCase):
 
     @patch("parcel_ai_json.api.get_sam_service")
     @patch("parcel_ai_json.api.get_detector")
-    def test_detect_endpoint_with_sam(
-        self,
-        mock_get_detector,
-        mock_get_sam
-    ):
+    def test_detect_endpoint_with_sam(self, mock_get_detector, mock_get_sam):
         """Test /detect endpoint with SAM segmentation enabled."""
         # Mock detector
         mock_detector = Mock()
@@ -312,6 +318,197 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(mock_sam.points_per_side, 16)
         finally:
             Path(tmp_path).unlink()
+
+    @patch("parcel_ai_json.api.get_detector")
+    def test_detect_amenities_endpoint(self, mock_get_detector):
+        """Test /detect/amenities endpoint."""
+        from parcel_ai_json.amenity_detector import AmenityDetection
+
+        mock_detector = Mock()
+        mock_detector.amenity_detector.detect_amenities.return_value = [
+            AmenityDetection(
+                amenity_type="tennis_court",
+                pixel_bbox=(50, 100, 200, 250),
+                geo_polygon=[
+                    (-122.4195, 37.7750),
+                    (-122.4194, 37.7750),
+                    (-122.4194, 37.7749),
+                    (-122.4195, 37.7749),
+                    (-122.4195, 37.7750),
+                ],
+                confidence=0.85,
+            )
+        ]
+        mock_get_detector.return_value = mock_detector
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(b"fake image data")
+            tmp_path = tmp_file.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect/amenities",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["type"], "FeatureCollection")
+            self.assertEqual(len(data["features"]), 1)
+            self.assertEqual(
+                data["features"][0]["properties"]["amenity_type"], "tennis_court"
+            )
+        finally:
+            Path(tmp_path).unlink()
+
+    @patch("parcel_ai_json.api.get_detector")
+    def test_detect_trees_endpoint(self, mock_get_detector):
+        """Test /detect/trees endpoint."""
+        mock_detector = Mock()
+        mock_tree_detection = TreeDetection(
+            trees=[],
+            tree_count=0,
+            average_confidence=None,
+            average_crown_area_sqm=None,
+            tree_pixel_count=3000,
+            total_pixels=100000,
+            tree_coverage_percent=3.0,
+            tree_polygons=None,
+            tree_mask_path=None,
+        )
+        mock_detector.tree_detector.detect_trees.return_value = mock_tree_detection
+        mock_get_detector.return_value = mock_detector
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(b"fake image data")
+            tmp_path = tmp_file.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect/trees",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["tree_coverage_percent"], 3.0)
+            self.assertEqual(data["tree_count"], 0)
+        finally:
+            Path(tmp_path).unlink()
+
+    @patch("parcel_ai_json.api.get_detector")
+    def test_detect_fences_endpoint(self, mock_get_detector):
+        """Test /detect/fences endpoint."""
+        mock_detector = Mock()
+
+        # Create a mock fence detection object with required attributes
+        mock_fence_detection = Mock()
+        mock_fence_detection.geo_polygons = []
+        mock_fence_detection.to_geojson_features.return_value = []
+        mock_fence_detection.to_dict.return_value = {
+            "num_segments": 0,
+            "total_length_m": 0,
+        }
+
+        mock_detector.fence_detector.detect_fences.return_value = mock_fence_detection
+        mock_get_detector.return_value = mock_detector
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(b"fake image data")
+            tmp_path = tmp_file.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/detect/fences",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                        "zoom_level": "20",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["type"], "FeatureCollection")
+            self.assertIn("features", data)
+            self.assertIn("metadata", data)
+        finally:
+            Path(tmp_path).unlink()
+
+    @patch("parcel_ai_json.api.get_sam_service")
+    def test_segment_sam_endpoint(self, mock_get_sam):
+        """Test /segment/sam endpoint."""
+        mock_sam = Mock()
+        mock_sam.segment_image.return_value = []
+        mock_get_sam.return_value = mock_sam
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(b"fake image data")
+            tmp_path = tmp_file.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                response = self.client.post(
+                    "/segment/sam",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                    data={
+                        "center_lat": "37.7749",
+                        "center_lon": "-122.4194",
+                        "zoom_level": "20",
+                        "points_per_side": "32",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["type"], "FeatureCollection")
+            self.assertIn("features", data)
+            mock_sam.segment_image.assert_called_once()
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_detect_endpoint_missing_params(self):
+        """Test /detect endpoint with missing required parameters."""
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            tmp_file.write(b"fake image data")
+            tmp_path = tmp_file.name
+
+        try:
+            with open(tmp_path, "rb") as f:
+                # Missing center_lat and center_lon
+                response = self.client.post(
+                    "/detect",
+                    files={"image": ("test.jpg", f, "image/jpeg")},
+                )
+
+            self.assertEqual(response.status_code, 422)  # Validation error
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_detect_endpoint_no_image(self):
+        """Test /detect endpoint without image file."""
+        response = self.client.post(
+            "/detect",
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)  # Validation error
+
 
 if __name__ == "__main__":
     unittest.main()
