@@ -2,15 +2,21 @@
 
 Provides HTTP endpoints for detecting vehicles, pools, amenities, and trees
 in satellite imagery.
+
+Clean Architecture Implementation:
+- Dependency injection for services (testability)
+- Separation of concerns (file I/O, validation, business logic)
+- Clear boundaries between layers
 """
 
-from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from typing import Optional, Callable, Dict, Any
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.responses import JSONResponse
 import tempfile
 import shutil
 from pathlib import Path
 import logging
+import json
 
 from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
@@ -33,8 +39,17 @@ _detector = None
 _sam_service = None
 
 
+# ============================================================================
+# DEPENDENCY INJECTION - Clean Architecture Layer
+# ============================================================================
+
+
 def get_detector() -> PropertyDetectionService:
-    """Get or create the PropertyDetectionService singleton."""
+    """Get or create the PropertyDetectionService singleton.
+
+    This acts as a dependency provider for FastAPI's dependency injection.
+    Can be overridden in tests using app.dependency_overrides.
+    """
     global _detector
     if _detector is None:
         # Auto-detect best device (cuda/mps/cpu)
@@ -64,7 +79,11 @@ def get_detector() -> PropertyDetectionService:
 
 
 def get_sam_service() -> SAMSegmentationService:
-    """Get or create the SAMSegmentationService singleton."""
+    """Get or create the SAMSegmentationService singleton.
+
+    This acts as a dependency provider for FastAPI's dependency injection.
+    Can be overridden in tests using app.dependency_overrides.
+    """
     global _sam_service
     if _sam_service is None:
         device = get_best_device()
@@ -83,75 +102,246 @@ def get_sam_service() -> SAMSegmentationService:
     return _sam_service
 
 
-async def _handle_detection_request(
-    image: UploadFile,
+# ============================================================================
+# VALIDATION LAYER - Input Validation Functions
+# ============================================================================
+
+
+def validate_image_content_type(content_type: Optional[str]) -> None:
+    """Validate that uploaded file is an image."""
+    if not content_type or not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
+
+
+def validate_coordinates(center_lat: float, center_lon: float) -> None:
+    """Validate latitude and longitude are within valid ranges."""
+    if not -90 <= center_lat <= 90:
+        raise HTTPException(
+            status_code=400, detail="Latitude must be between -90 and 90"
+        )
+    if not -180 <= center_lon <= 180:
+        raise HTTPException(
+            status_code=400, detail="Longitude must be between -180 and 180"
+        )
+
+
+def validate_zoom_level(zoom_level: int) -> None:
+    """Validate zoom level is within valid range."""
+    if not 1 <= zoom_level <= 22:
+        raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
+
+
+def validate_format(format: str) -> None:
+    """Validate output format is supported."""
+    if format not in ["geojson", "summary"]:
+        raise HTTPException(
+            status_code=400, detail="Format must be 'geojson' or 'summary'"
+        )
+
+
+def validate_sam_points_per_side(points_per_side: int) -> None:
+    """Validate SAM points_per_side is within valid range."""
+    if not 8 <= points_per_side <= 64:
+        raise HTTPException(
+            status_code=400, detail="points_per_side must be between 8 and 64"
+        )
+
+
+# ============================================================================
+# FILE HANDLING LAYER - I/O Operations
+# ============================================================================
+
+
+class TempFileManager:
+    """Context manager for temporary file operations.
+
+    Handles file upload, storage, and cleanup following Clean Architecture
+    principles by separating I/O concerns from business logic.
+    """
+
+    def __init__(self, image: UploadFile):
+        self.image = image
+        self.temp_dir: Optional[Path] = None
+        self.image_path: Optional[Path] = None
+
+    def __enter__(self) -> Dict[str, Any]:
+        """Save uploaded file to temporary directory and return metadata."""
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.image_path = self.temp_dir / self.image.filename
+
+        with open(self.image_path, "wb") as f:
+            shutil.copyfileobj(self.image.file, f)
+
+        logger.info(f"Saved uploaded image to {self.image_path}")
+        return {"path": str(self.image_path)}
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up temporary files."""
+        if self.temp_dir and self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+
+def save_uploaded_file(image: UploadFile) -> tuple[Path, Path]:
+    """Save uploaded file to temporary directory.
+
+    Returns:
+        Tuple of (temp_dir, image_path)
+    """
+    temp_dir = Path(tempfile.mkdtemp())
+    image_path = temp_dir / image.filename
+    with open(image_path, "wb") as f:
+        shutil.copyfileobj(image.file, f)
+    return temp_dir, image_path
+
+
+def cleanup_temp_dir(temp_dir: Optional[Path]) -> None:
+    """Clean up temporary directory."""
+    if temp_dir and temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# ============================================================================
+# BUSINESS LOGIC LAYER - Detection Orchestration
+# ============================================================================
+
+
+def parse_regrid_parcel_polygon(regrid_json: Optional[str]) -> Optional[Any]:
+    """Parse Regrid parcel polygon from JSON string.
+
+    Handles multiple formats:
+    - GeoJSON Feature (extracts geometry)
+    - GeoJSON Geometry (uses as-is)
+    - List of coordinates
+
+    Args:
+        regrid_json: JSON string containing parcel polygon data
+
+    Returns:
+        Parsed parcel polygon or None
+
+    Raises:
+        HTTPException: If JSON is invalid
+    """
+    if regrid_json is None:
+        return None
+
+    try:
+        parcel_data = json.loads(regrid_json)
+        logger.info("Parsed Regrid parcel polygon from JSON")
+
+        # Handle GeoJSON Feature format (extract geometry)
+        if isinstance(parcel_data, dict):
+            if parcel_data.get("type") == "Feature" and "geometry" in parcel_data:
+                # Extract geometry from Feature
+                parcel_polygon = parcel_data["geometry"]
+                geom_type = parcel_polygon.get("type")
+                logger.info(f"Extracted geometry from GeoJSON Feature: {geom_type}")
+            elif "coordinates" in parcel_data:
+                # Already a geometry object
+                parcel_polygon = parcel_data
+                geom_type = parcel_data.get("type")
+                logger.info(f"Using GeoJSON geometry: {geom_type}")
+            else:
+                keys = list(parcel_data.keys())
+                logger.warning(f"Unknown parcel polygon format with keys: {keys}")
+                parcel_polygon = parcel_data
+        elif isinstance(parcel_data, list):
+            # List of coordinate tuples
+            parcel_polygon = parcel_data
+            num_points = len(parcel_data)
+            logger.info(f"Using coordinate list with {num_points} points")
+        else:
+            logger.warning(f"Unexpected parcel polygon type: {type(parcel_data)}")
+            parcel_polygon = parcel_data
+
+        # Debug logging
+        if isinstance(parcel_polygon, dict) and "coordinates" in parcel_polygon:
+            coords = parcel_polygon.get("coordinates", [[]])[0]
+            logger.info(f"Parcel polygon has {len(coords)} coordinate points")
+
+        return parcel_polygon
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid JSON in regrid_parcel_polygon: {e}",
+        )
+
+
+def create_satellite_image_metadata(
+    image_path: Path,
     center_lat: float,
     center_lon: float,
     zoom_level: int,
-    detection_func,
-    feature_name: str,
-):
-    """Generic handler for detection requests with common boilerplate.
+) -> Dict[str, Any]:
+    """Create satellite image metadata dictionary.
 
     Args:
-        image: Uploaded satellite image file
-        center_lat: Center latitude of image
-        center_lon: Center longitude of image
-        zoom_level: Google Maps zoom level
-        detection_func: Callable that performs detection
-            (takes satellite_image dict, returns list of detections)
-        feature_name: Name of feature being detected
-            (e.g., "vehicle", "pool", "amenity", "tree")
+        image_path: Path to saved image file
+        center_lat: Center latitude (WGS84)
+        center_lon: Center longitude (WGS84)
+        zoom_level: Zoom level
 
     Returns:
-        JSONResponse with GeoJSON FeatureCollection
-
-    Raises:
-        HTTPException: On detection failure
+        Satellite image metadata dict
     """
-    logger.info(
-        f"Processing {feature_name} detection: " f"lat={center_lat}, lon={center_lon}"
+    return {
+        "path": str(image_path),
+        "center_lat": center_lat,
+        "center_lon": center_lon,
+        "zoom_level": zoom_level,
+    }
+
+
+def add_regrid_parcel_to_geojson(
+    geojson: Dict[str, Any],
+    parcel_polygon: Any,
+) -> None:
+    """Add Regrid parcel polygon to GeoJSON output.
+
+    Modifies geojson dict in-place by appending parcel feature.
+
+    Args:
+        geojson: GeoJSON FeatureCollection dict
+        parcel_polygon: Parcel polygon data (various formats)
+    """
+    # Handle different formats: Feature, Geometry, or plain coordinate list
+    if isinstance(parcel_polygon, dict):
+        if parcel_polygon.get("type") == "Feature":
+            # Extract geometry from Feature
+            geojson_geometry = parcel_polygon.get("geometry", {})
+        elif "type" in parcel_polygon and "coordinates" in parcel_polygon:
+            # Already a GeoJSON geometry (Polygon, etc.)
+            geojson_geometry = parcel_polygon
+        else:
+            # Unknown dict format, try to use as-is
+            geojson_geometry = parcel_polygon
+    else:
+        # Convert coordinate list to GeoJSON Polygon
+        # Ensure coordinates are in nested list format: [[[lon, lat], ...]]
+        coords = parcel_polygon if isinstance(parcel_polygon, list) else []
+        geojson_geometry = {
+            "type": "Polygon",
+            "coordinates": [coords] if coords else [[]],
+        }
+
+    geojson["features"].append(
+        {
+            "type": "Feature",
+            "geometry": geojson_geometry,
+            "properties": {
+                "feature_type": "regrid_parcel",
+                "detection_type": "regrid_parcel",
+                "source": "regrid",
+            },
+        }
     )
+    logger.info("Added Regrid parcel polygon to GeoJSON output")
 
-    temp_dir = None
-    try:
-        # Save uploaded file to temporary directory
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
 
-        # Create satellite image metadata
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        # Run detection
-        detections = detection_func(satellite_image)
-
-        # Convert to GeoJSON
-        geojson = {
-            "type": "FeatureCollection",
-            "features": [d.to_geojson_feature() for d in detections],
-        }
-
-        logger.info(f"Found {len(detections)} {feature_name}s")
-        return JSONResponse(content=geojson)
-
-    except Exception as e:
-        logger.error(f"{feature_name} detection failed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"{feature_name.capitalize()} detection failed: {str(e)}",
-        )
-
-    finally:
-        # Clean up temporary files
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+# ============================================================================
+# API ENDPOINTS - Presentation Layer
+# ============================================================================
 
 
 @app.get("/")
@@ -198,6 +388,8 @@ async def detect_property(
             "Optional Regrid parcel polygon as JSON string " "(for fence detection)"
         ),
     ),
+    detector: PropertyDetectionService = Depends(get_detector),
+    sam_service: SAMSegmentationService = Depends(get_sam_service),
 ):
     """Detect all property features in satellite image.
 
@@ -212,6 +404,8 @@ async def detect_property(
         label_sam_segments: Label SAM segments with semantic labels (default: True)
         detect_fences: Include fence detection (default: False)
         regrid_parcel_polygon: Optional Regrid parcel polygon as JSON string
+        detector: Injected PropertyDetectionService (for testing)
+        sam_service: Injected SAMSegmentationService (for testing)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
@@ -222,108 +416,30 @@ async def detect_property(
         f"detect_fences={detect_fences}"
     )
 
-    # Validate inputs
-    if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
+    # Validate inputs (Clean Architecture - Input Validation Layer)
+    validate_image_content_type(image.content_type)
+    validate_coordinates(center_lat, center_lon)
+    validate_zoom_level(zoom_level)
+    validate_format(format)
+    if include_sam:
+        validate_sam_points_per_side(sam_points_per_side)
 
-    if not -90 <= center_lat <= 90:
-        raise HTTPException(
-            status_code=400, detail="Latitude must be between -90 and 90"
-        )
+    # Parse Regrid parcel polygon (Business Logic Layer)
+    parcel_polygon = None
+    if detect_fences and regrid_parcel_polygon is not None:
+        parcel_polygon = parse_regrid_parcel_polygon(regrid_parcel_polygon)
 
-    if not -180 <= center_lon <= 180:
-        raise HTTPException(
-            status_code=400, detail="Longitude must be between -180 and 180"
-        )
-
-    if not 1 <= zoom_level <= 22:
-        raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
-
-    if format not in ["geojson", "summary"]:
-        raise HTTPException(
-            status_code=400, detail="Format must be 'geojson' or 'summary'"
-        )
-
-    if include_sam and not 8 <= sam_points_per_side <= 64:
-        raise HTTPException(
-            status_code=400, detail="sam_points_per_side must be between 8 and 64"
-        )
-
-    # Save uploaded file to temporary location
+    # File handling (I/O Layer)
     temp_dir = None
     try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+        temp_dir, image_path = save_uploaded_file(image)
 
-        logger.info(f"Saved uploaded image to {image_path}")
+        # Create satellite image metadata (Business Logic Layer)
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
 
-        # Parse Regrid parcel polygon if provided
-        parcel_polygon = None
-        if detect_fences and regrid_parcel_polygon is not None:
-            import json
-
-            try:
-                parcel_data = json.loads(regrid_parcel_polygon)
-                logger.info("Parsed Regrid parcel polygon from JSON")
-
-                # Handle GeoJSON Feature format (extract geometry)
-                if isinstance(parcel_data, dict):
-                    if (
-                        parcel_data.get("type") == "Feature"
-                        and "geometry" in parcel_data
-                    ):
-                        # Extract geometry from Feature
-                        parcel_polygon = parcel_data["geometry"]
-                        geom_type = parcel_polygon.get("type")
-                        logger.info(
-                            f"Extracted geometry from GeoJSON Feature: " f"{geom_type}"
-                        )
-                    elif "coordinates" in parcel_data:
-                        # Already a geometry object
-                        parcel_polygon = parcel_data
-                        geom_type = parcel_data.get("type")
-                        logger.info(f"Using GeoJSON geometry: {geom_type}")
-                    else:
-                        keys = list(parcel_data.keys())
-                        logger.warning(
-                            f"Unknown parcel polygon format with keys: " f"{keys}"
-                        )
-                        parcel_polygon = parcel_data
-                elif isinstance(parcel_data, list):
-                    # List of coordinate tuples
-                    parcel_polygon = parcel_data
-                    num_points = len(parcel_data)
-                    logger.info(f"Using coordinate list with {num_points} points")
-                else:
-                    logger.warning(
-                        f"Unexpected parcel polygon type: {type(parcel_data)}"
-                    )
-                    parcel_polygon = parcel_data
-
-                # Debug logging
-                if isinstance(parcel_polygon, dict) and "coordinates" in parcel_polygon:
-                    coords = parcel_polygon.get("coordinates", [[]])[0]
-                    logger.info(f"Parcel polygon has {len(coords)} coordinate points")
-
-            except json.JSONDecodeError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid JSON in regrid_parcel_polygon: {e}",
-                )
-
-        # Prepare satellite image metadata
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        # Get detector and run detection
-        detector = get_detector()
-
+        # Run detection (Business Logic Layer)
         if format == "summary":
             # Return summary statistics only
             detections = detector.detect_all(
@@ -335,7 +451,6 @@ async def detect_property(
 
             # Add SAM segment count if requested
             if include_sam:
-                sam_service = get_sam_service()
                 if sam_points_per_side != sam_service.points_per_side:
                     sam_service.points_per_side = sam_points_per_side
                 sam_segments = sam_service.segment_image(satellite_image)
@@ -355,7 +470,6 @@ async def detect_property(
             # Add SAM segments if requested
             if include_sam:
                 logger.info("Running SAM segmentation...")
-                sam_service = get_sam_service()
                 if sam_points_per_side != sam_service.points_per_side:
                     logger.info(
                         f"Updating SAM points_per_side to {sam_points_per_side}"
@@ -420,38 +534,7 @@ async def detect_property(
 
             # Add regrid parcel polygon to GeoJSON output if provided
             if parcel_polygon is not None:
-                # Handle different formats: Feature, Geometry, or plain coordinate list
-                if isinstance(parcel_polygon, dict):
-                    if parcel_polygon.get("type") == "Feature":
-                        # Extract geometry from Feature
-                        geojson_geometry = parcel_polygon.get("geometry", {})
-                    elif "type" in parcel_polygon and "coordinates" in parcel_polygon:
-                        # Already a GeoJSON geometry (Polygon, etc.)
-                        geojson_geometry = parcel_polygon
-                    else:
-                        # Unknown dict format, try to use as-is
-                        geojson_geometry = parcel_polygon
-                else:
-                    # Convert coordinate list to GeoJSON Polygon
-                    # Ensure coordinates are in nested list format: [[[lon, lat], ...]]
-                    coords = parcel_polygon if isinstance(parcel_polygon, list) else []
-                    geojson_geometry = {
-                        "type": "Polygon",
-                        "coordinates": [coords] if coords else [[]],
-                    }
-
-                geojson["features"].append(
-                    {
-                        "type": "Feature",
-                        "geometry": geojson_geometry,
-                        "properties": {
-                            "feature_type": "regrid_parcel",
-                            "detection_type": "regrid_parcel",
-                            "source": "regrid",
-                        },
-                    }
-                )
-                logger.info("Added Regrid parcel polygon to GeoJSON output")
+                add_regrid_parcel_to_geojson(geojson, parcel_polygon)
 
             logger.info(
                 f"Detection complete: {len(geojson['features'])} total features"
@@ -463,9 +546,72 @@ async def detect_property(
         raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
 
     finally:
-        # Clean up temporary files
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        # Clean up temporary files (I/O Layer)
+        cleanup_temp_dir(temp_dir)
+
+
+async def _handle_detection_request(
+    image: UploadFile,
+    center_lat: float,
+    center_lon: float,
+    zoom_level: int,
+    detection_func: Callable,
+    feature_name: str,
+):
+    """Generic handler for detection requests with common boilerplate.
+
+    Args:
+        image: Uploaded satellite image file
+        center_lat: Center latitude of image
+        center_lon: Center longitude of image
+        zoom_level: Google Maps zoom level
+        detection_func: Callable that performs detection
+            (takes satellite_image dict, returns list of detections)
+        feature_name: Name of feature being detected
+            (e.g., "vehicle", "pool", "amenity", "tree")
+
+    Returns:
+        JSONResponse with GeoJSON FeatureCollection
+
+    Raises:
+        HTTPException: On detection failure
+    """
+    logger.info(
+        f"Processing {feature_name} detection: " f"lat={center_lat}, lon={center_lon}"
+    )
+
+    temp_dir = None
+    try:
+        # Save uploaded file to temporary directory (I/O Layer)
+        temp_dir, image_path = save_uploaded_file(image)
+
+        # Create satellite image metadata (Business Logic Layer)
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
+
+        # Run detection (Business Logic Layer)
+        detections = detection_func(satellite_image)
+
+        # Convert to GeoJSON (Presentation Layer)
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [d.to_geojson_feature() for d in detections],
+        }
+
+        logger.info(f"Found {len(detections)} {feature_name}s")
+        return JSONResponse(content=geojson)
+
+    except Exception as e:
+        logger.error(f"{feature_name} detection failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"{feature_name.capitalize()} detection failed: {str(e)}",
+        )
+
+    finally:
+        # Clean up temporary files (I/O Layer)
+        cleanup_temp_dir(temp_dir)
 
 
 @app.post("/detect/vehicles")
@@ -474,9 +620,9 @@ async def detect_vehicles(
     center_lat: float = Form(...),
     center_lon: float = Form(...),
     zoom_level: int = Form(20),
+    detector: PropertyDetectionService = Depends(get_detector),
 ):
     """Detect only vehicles in satellite image."""
-    detector = get_detector()
     return await _handle_detection_request(
         image=image,
         center_lat=center_lat,
@@ -493,9 +639,9 @@ async def detect_pools(
     center_lat: float = Form(...),
     center_lon: float = Form(...),
     zoom_level: int = Form(20),
+    detector: PropertyDetectionService = Depends(get_detector),
 ):
     """Detect only swimming pools in satellite image."""
-    detector = get_detector()
     return await _handle_detection_request(
         image=image,
         center_lat=center_lat,
@@ -512,9 +658,9 @@ async def detect_amenities(
     center_lat: float = Form(...),
     center_lon: float = Form(...),
     zoom_level: int = Form(20),
+    detector: PropertyDetectionService = Depends(get_detector),
 ):
     """Detect only amenities (tennis/basketball courts, etc.)."""
-    detector = get_detector()
     return await _handle_detection_request(
         image=image,
         center_lat=center_lat,
@@ -531,25 +677,19 @@ async def detect_trees(
     center_lat: float = Form(...),
     center_lon: float = Form(...),
     zoom_level: int = Form(20),
+    detector: PropertyDetectionService = Depends(get_detector),
 ):
     """Detect tree coverage in satellite image."""
     logger.info(f"Processing tree detection: lat={center_lat}, lon={center_lon}")
 
     temp_dir = None
     try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+        temp_dir, image_path = save_uploaded_file(image)
 
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
 
-        detector = get_detector()
         tree_detection = detector.tree_detector.detect_trees(satellite_image)
 
         logger.info(
@@ -563,8 +703,7 @@ async def detect_trees(
         raise HTTPException(status_code=500, detail=f"Tree detection failed: {str(e)}")
 
     finally:
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        cleanup_temp_dir(temp_dir)
 
 
 @app.post("/detect/fences")
@@ -585,6 +724,7 @@ async def detect_fences(
             "Probability threshold " "(default: 0.05 - lowered for better detection)"
         ),
     ),
+    detector: PropertyDetectionService = Depends(get_detector),
 ):
     """Detect fences in satellite image using HED model.
 
@@ -595,6 +735,7 @@ async def detect_fences(
         zoom_level: Zoom level (default: 20)
         fence_mask: Optional fence probability mask from Regrid (512x512 PNG/NPY)
         threshold: Probability threshold for fence detection (default: 0.1)
+        detector: Injected PropertyDetectionService (for testing)
 
     Returns:
         GeoJSON FeatureCollection with fence polygon features
@@ -603,10 +744,7 @@ async def detect_fences(
 
     temp_dir = None
     try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+        temp_dir, image_path = save_uploaded_file(image)
 
         # Process fence mask if provided
         fence_probability_mask = None
@@ -629,14 +767,9 @@ async def detect_fences(
                 f"Loaded fence probability mask: {fence_probability_mask.shape}"
             )
 
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        detector = get_detector()
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
 
         # Update fence detector threshold if different from default
         if threshold != detector.fence_detector.threshold:
@@ -663,8 +796,7 @@ async def detect_fences(
         raise HTTPException(status_code=500, detail=f"Fence detection failed: {str(e)}")
 
     finally:
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        cleanup_temp_dir(temp_dir)
 
 
 @app.post("/segment/sam")
@@ -676,6 +808,7 @@ async def segment_sam(
     points_per_side: int = Form(
         32, description="SAM grid sampling density (default: 32)"
     ),
+    sam_service: SAMSegmentationService = Depends(get_sam_service),
 ):
     """Run SAM segmentation on satellite image.
 
@@ -685,6 +818,7 @@ async def segment_sam(
         center_lon: Center longitude of image (WGS84)
         zoom_level: Zoom level (default: 20)
         points_per_side: SAM grid sampling density (default: 32)
+        sam_service: Injected SAMSegmentationService (for testing)
 
     Returns:
         GeoJSON with SAM segments
@@ -695,47 +829,22 @@ async def segment_sam(
     )
 
     # Validate inputs
-    if not image.content_type or not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image (JPEG/PNG)")
-
-    if not -90 <= center_lat <= 90:
-        raise HTTPException(
-            status_code=400, detail="Latitude must be between -90 and 90"
-        )
-
-    if not -180 <= center_lon <= 180:
-        raise HTTPException(
-            status_code=400, detail="Longitude must be between -180 and 180"
-        )
-
-    if not 1 <= zoom_level <= 22:
-        raise HTTPException(status_code=400, detail="Zoom level must be between 1-22")
-
-    if not 8 <= points_per_side <= 64:
-        raise HTTPException(
-            status_code=400, detail="points_per_side must be between 8 and 64"
-        )
+    validate_image_content_type(image.content_type)
+    validate_coordinates(center_lat, center_lon)
+    validate_zoom_level(zoom_level)
+    validate_sam_points_per_side(points_per_side)
 
     # Save uploaded file to temporary location
     temp_dir = None
     try:
-        temp_dir = Path(tempfile.mkdtemp())
-        image_path = temp_dir / image.filename
-        with open(image_path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+        temp_dir, image_path = save_uploaded_file(image)
 
         logger.info(f"Saved uploaded image to {image_path}")
 
         # Prepare satellite image metadata
-        satellite_image = {
-            "path": str(image_path),
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "zoom_level": zoom_level,
-        }
-
-        # Get SAM service and run segmentation
-        sam_service = get_sam_service()
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
 
         # Update points_per_side if different from default
         if points_per_side != sam_service.points_per_side:
@@ -761,8 +870,7 @@ async def segment_sam(
 
     finally:
         # Clean up temporary files
-        if temp_dir and temp_dir.exists():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        cleanup_temp_dir(temp_dir)
 
 
 if __name__ == "__main__":

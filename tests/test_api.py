@@ -1,23 +1,36 @@
-"""Tests for FastAPI REST service."""
+"""Tests for FastAPI REST service using Clean Architecture with dependency injection."""
 
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from fastapi.testclient import TestClient
-import tempfile
-from pathlib import Path
+from PIL import Image
+import io
 
-from parcel_ai_json.api import app
+from parcel_ai_json.api import app, get_detector, get_sam_service
 from parcel_ai_json.property_detector import PropertyDetections
 from parcel_ai_json.vehicle_detector import VehicleDetection
 from parcel_ai_json.tree_detector import TreeDetection
 
 
 class TestAPI(unittest.TestCase):
-    """Test FastAPI endpoints."""
+    """Test FastAPI endpoints using dependency injection."""
 
     def setUp(self):
-        """Set up test client."""
+        """Set up test client and clear dependency overrides."""
         self.client = TestClient(app)
+        app.dependency_overrides = {}
+
+    def tearDown(self):
+        """Clean up dependency overrides after tests."""
+        app.dependency_overrides = {}
+
+    def _create_test_image(self) -> bytes:
+        """Create a valid test image (100x100 white pixel image)."""
+        img = Image.new("RGB", (100, 100), color="white")
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format="JPEG")
+        img_bytes.seek(0)
+        return img_bytes.read()
 
     def test_root_endpoint(self):
         """Test root endpoint."""
@@ -38,10 +51,9 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(data["status"], "healthy")
         self.assertIn("detector_loaded", data)
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_endpoint_summary(self, mock_get_detector):
+    def test_detect_endpoint_summary(self):
         """Test /detect endpoint with summary format."""
-        # Mock detector
+        # Mock detector using dependency injection
         mock_detector = Mock()
         mock_detections = PropertyDetections(
             vehicles=[
@@ -73,36 +85,31 @@ class TestAPI(unittest.TestCase):
             ),
         )
         mock_detector.detect_all.return_value = mock_detections
-        mock_get_detector.return_value = mock_detector
+
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
         # Create test image
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        image_data = self._create_test_image()
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                        "format": "summary",
-                    },
-                )
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "format": "summary",
+            },
+        )
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["vehicles"], 1)
-            self.assertEqual(data["swimming_pools"], 0)
-            self.assertEqual(data["tree_coverage_percent"], 1.91)
-        finally:
-            Path(tmp_path).unlink()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["vehicles"], 1)
+        self.assertEqual(data["swimming_pools"], 0)
+        self.assertEqual(data["tree_coverage_percent"], 1.91)
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_endpoint_geojson(self, mock_get_detector):
+    def test_detect_endpoint_geojson(self):
         """Test /detect endpoint with GeoJSON format."""
         # Mock detector
         mock_detector = Mock()
@@ -121,84 +128,67 @@ class TestAPI(unittest.TestCase):
         mock_detections = Mock()
         mock_detections.to_geojson.return_value = mock_geojson
         mock_detector.detect_all.return_value = mock_detections
-        mock_get_detector.return_value = mock_detector
+
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
         # Create test image
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        image_data = self._create_test_image()
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                        "format": "geojson",
-                    },
-                )
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "format": "geojson",
+            },
+        )
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertIn("features", data)
-            self.assertIn("tree_coverage", data)
-        finally:
-            Path(tmp_path).unlink()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertIn("features", data)
+        self.assertIn("tree_coverage", data)
 
     def test_detect_endpoint_invalid_zoom(self):
         """Test /detect endpoint with invalid zoom level."""
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        image_data = self._create_test_image()
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "25",  # Invalid: > 22
-                        "format": "summary",
-                    },
-                )
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "25",  # Invalid: > 22
+                "format": "summary",
+            },
+        )
 
-            self.assertEqual(response.status_code, 400)
-            self.assertIn("Zoom level must be between", response.json()["detail"])
-        finally:
-            Path(tmp_path).unlink()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Zoom level must be between", response.json()["detail"])
 
     def test_detect_endpoint_invalid_format(self):
         """Test /detect endpoint with invalid format."""
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        image_data = self._create_test_image()
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                        "format": "invalid",
-                    },
-                )
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "format": "invalid",
+            },
+        )
 
-            self.assertEqual(response.status_code, 400)
-            self.assertIn("Format must be", response.json()["detail"])
-        finally:
-            Path(tmp_path).unlink()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Format must be", response.json()["detail"])
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_vehicles_endpoint(self, mock_get_detector):
+    def test_detect_vehicles_endpoint(self):
         """Test /detect/vehicles endpoint."""
         mock_detector = Mock()
         mock_detector.vehicle_detector.detect_vehicles.return_value = [
@@ -215,63 +205,52 @@ class TestAPI(unittest.TestCase):
                 class_name="car",
             )
         ]
-        mock_get_detector.return_value = mock_detector
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect/vehicles",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertEqual(len(data["features"]), 1)
-            self.assertEqual(data["features"][0]["properties"]["vehicle_class"], "car")
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect/vehicles",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_pools_endpoint(self, mock_get_detector):
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(data["features"][0]["properties"]["vehicle_class"], "car")
+
+    def test_detect_pools_endpoint(self):
         """Test /detect/pools endpoint."""
         mock_detector = Mock()
         mock_detector.pool_detector.detect_swimming_pools.return_value = []
-        mock_get_detector.return_value = mock_detector
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect/pools",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertEqual(len(data["features"]), 0)
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect/pools",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_sam_service")
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_endpoint_with_sam(self, mock_get_detector, mock_get_sam):
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertEqual(len(data["features"]), 0)
+
+    def test_detect_endpoint_with_sam(self):
         """Test /detect endpoint with SAM segmentation enabled."""
         # Mock detector
         mock_detector = Mock()
@@ -285,42 +264,37 @@ class TestAPI(unittest.TestCase):
             "features": [],
         }
         mock_detector.detect_all.return_value = mock_detections
-        mock_get_detector.return_value = mock_detector
 
         # Mock SAM service
         mock_sam = Mock()
         mock_sam.points_per_side = 32
         mock_sam.segment_image.return_value = []
-        mock_get_sam.return_value = mock_sam
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            f.write(b"fake image data")
-            tmp_path = f.name
+        # Override dependencies
+        app.dependency_overrides[get_detector] = lambda: mock_detector
+        app.dependency_overrides[get_sam_service] = lambda: mock_sam
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                        "include_sam": "true",
-                        "sam_points_per_side": "16",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            # Verify SAM was called
-            mock_sam.segment_image.assert_called_once()
-            # Verify points_per_side was updated
-            self.assertEqual(mock_sam.points_per_side, 16)
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "include_sam": "true",
+                "sam_points_per_side": "16",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_amenities_endpoint(self, mock_get_detector):
+        self.assertEqual(response.status_code, 200)
+        # Verify SAM was called
+        mock_sam.segment_image.assert_called_once()
+        # Verify points_per_side was updated
+        self.assertEqual(mock_sam.points_per_side, 16)
+
+    def test_detect_amenities_endpoint(self):
         """Test /detect/amenities endpoint."""
         from parcel_ai_json.amenity_detector import AmenityDetection
 
@@ -339,35 +313,30 @@ class TestAPI(unittest.TestCase):
                 confidence=0.85,
             )
         ]
-        mock_get_detector.return_value = mock_detector
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect/amenities",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertEqual(len(data["features"]), 1)
-            self.assertEqual(
-                data["features"][0]["properties"]["amenity_type"], "tennis_court"
-            )
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect/amenities",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_trees_endpoint(self, mock_get_detector):
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertEqual(len(data["features"]), 1)
+        self.assertEqual(
+            data["features"][0]["properties"]["amenity_type"], "tennis_court"
+        )
+
+    def test_detect_trees_endpoint(self):
         """Test /detect/trees endpoint."""
         mock_detector = Mock()
         mock_tree_detection = TreeDetection(
@@ -382,32 +351,27 @@ class TestAPI(unittest.TestCase):
             tree_mask_path=None,
         )
         mock_detector.tree_detector.detect_trees.return_value = mock_tree_detection
-        mock_get_detector.return_value = mock_detector
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect/trees",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["tree_coverage_percent"], 3.0)
-            self.assertEqual(data["tree_count"], 0)
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect/trees",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_detector")
-    def test_detect_fences_endpoint(self, mock_get_detector):
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["tree_coverage_percent"], 3.0)
+        self.assertEqual(data["tree_count"], 0)
+
+    def test_detect_fences_endpoint(self):
         """Test /detect/fences endpoint."""
         mock_detector = Mock()
 
@@ -421,81 +385,67 @@ class TestAPI(unittest.TestCase):
         }
 
         mock_detector.fence_detector.detect_fences.return_value = mock_fence_detection
-        mock_get_detector.return_value = mock_detector
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/detect/fences",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertIn("features", data)
-            self.assertIn("metadata", data)
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/detect/fences",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+            },
+        )
 
-    @patch("parcel_ai_json.api.get_sam_service")
-    def test_segment_sam_endpoint(self, mock_get_sam):
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertIn("features", data)
+        self.assertIn("metadata", data)
+
+    def test_segment_sam_endpoint(self):
         """Test /segment/sam endpoint."""
         mock_sam = Mock()
+        mock_sam.points_per_side = 32
         mock_sam.segment_image.return_value = []
-        mock_get_sam.return_value = mock_sam
 
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        # Override dependency
+        app.dependency_overrides[get_sam_service] = lambda: mock_sam
 
-        try:
-            with open(tmp_path, "rb") as f:
-                response = self.client.post(
-                    "/segment/sam",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                    data={
-                        "center_lat": "37.7749",
-                        "center_lon": "-122.4194",
-                        "zoom_level": "20",
-                        "points_per_side": "32",
-                    },
-                )
+        image_data = self._create_test_image()
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data["type"], "FeatureCollection")
-            self.assertIn("features", data)
-            mock_sam.segment_image.assert_called_once()
-        finally:
-            Path(tmp_path).unlink()
+        response = self.client.post(
+            "/segment/sam",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "points_per_side": "32",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["type"], "FeatureCollection")
+        self.assertIn("features", data)
+        mock_sam.segment_image.assert_called_once()
 
     def test_detect_endpoint_missing_params(self):
         """Test /detect endpoint with missing required parameters."""
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
-            tmp_file.write(b"fake image data")
-            tmp_path = tmp_file.name
+        image_data = self._create_test_image()
 
-        try:
-            with open(tmp_path, "rb") as f:
-                # Missing center_lat and center_lon
-                response = self.client.post(
-                    "/detect",
-                    files={"image": ("test.jpg", f, "image/jpeg")},
-                )
+        # Missing center_lat and center_lon
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+        )
 
-            self.assertEqual(response.status_code, 422)  # Validation error
-        finally:
-            Path(tmp_path).unlink()
+        self.assertEqual(response.status_code, 422)  # Validation error
 
     def test_detect_endpoint_no_image(self):
         """Test /detect endpoint without image file."""
@@ -508,6 +458,283 @@ class TestAPI(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 422)  # Validation error
+
+    def test_validate_image_content_type_non_image(self):
+        """Test validation rejects non-image content type."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.txt", image_data, "text/plain")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("File must be an image", response.json()["detail"])
+
+    def test_validate_coordinates_invalid_lat(self):
+        """Test validation rejects invalid latitude."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "95.0",  # Invalid: > 90
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Latitude must be between", response.json()["detail"])
+
+    def test_validate_coordinates_invalid_lon(self):
+        """Test validation rejects invalid longitude."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-185.0",  # Invalid: < -180
+                "zoom_level": "20",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Longitude must be between", response.json()["detail"])
+
+    def test_validate_sam_points_per_side_invalid(self):
+        """Test validation rejects invalid SAM points_per_side."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "include_sam": "true",
+                "sam_points_per_side": "100",  # Invalid: > 64
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("points_per_side must be between", response.json()["detail"])
+
+    def test_segment_sam_invalid_coordinates(self):
+        """Test /segment/sam with invalid coordinates."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/segment/sam",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "91.0",  # Invalid
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Latitude must be between", response.json()["detail"])
+
+    def test_segment_sam_invalid_zoom(self):
+        """Test /segment/sam with invalid zoom level."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/segment/sam",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "0",  # Invalid: < 1
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Zoom level must be between", response.json()["detail"])
+
+    def test_segment_sam_invalid_points_per_side(self):
+        """Test /segment/sam with invalid points_per_side."""
+        image_data = self._create_test_image()
+
+        response = self.client.post(
+            "/segment/sam",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "points_per_side": "5",  # Invalid: < 8
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("points_per_side must be between", response.json()["detail"])
+
+    def test_parse_regrid_parcel_polygon_geojson_feature(self):
+        """Test parsing Regrid parcel polygon from GeoJSON Feature."""
+        import json
+        from parcel_ai_json.api import parse_regrid_parcel_polygon
+
+        geojson_feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-122.0, 37.0], [-121.9, 37.0], [-121.9, 36.9]]],
+            },
+        }
+
+        result = parse_regrid_parcel_polygon(json.dumps(geojson_feature))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "Polygon")
+        self.assertIn("coordinates", result)
+
+    def test_parse_regrid_parcel_polygon_geojson_geometry(self):
+        """Test parsing Regrid parcel polygon from GeoJSON Geometry."""
+        import json
+        from parcel_ai_json.api import parse_regrid_parcel_polygon
+
+        geojson_geometry = {
+            "type": "Polygon",
+            "coordinates": [[[-122.0, 37.0], [-121.9, 37.0], [-121.9, 36.9]]],
+        }
+
+        result = parse_regrid_parcel_polygon(json.dumps(geojson_geometry))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "Polygon")
+
+    def test_parse_regrid_parcel_polygon_coordinate_list(self):
+        """Test parsing Regrid parcel polygon from coordinate list."""
+        import json
+        from parcel_ai_json.api import parse_regrid_parcel_polygon
+
+        coord_list = [[-122.0, 37.0], [-121.9, 37.0], [-121.9, 36.9]]
+
+        result = parse_regrid_parcel_polygon(json.dumps(coord_list))
+
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 3)
+
+    def test_parse_regrid_parcel_polygon_invalid_json(self):
+        """Test parsing invalid JSON raises HTTPException."""
+        from parcel_ai_json.api import parse_regrid_parcel_polygon
+        from fastapi import HTTPException
+
+        with self.assertRaises(HTTPException) as cm:
+            parse_regrid_parcel_polygon("{invalid json")
+
+        self.assertEqual(cm.exception.status_code, 400)
+        self.assertIn("Invalid JSON", cm.exception.detail)
+
+    def test_parse_regrid_parcel_polygon_none(self):
+        """Test parsing None returns None."""
+        from parcel_ai_json.api import parse_regrid_parcel_polygon
+
+        result = parse_regrid_parcel_polygon(None)
+        self.assertIsNone(result)
+
+    def test_add_regrid_parcel_to_geojson_dict_geometry(self):
+        """Test adding Regrid parcel from dict geometry."""
+        from parcel_ai_json.api import add_regrid_parcel_to_geojson
+
+        geojson = {"type": "FeatureCollection", "features": []}
+        parcel_polygon = {
+            "type": "Polygon",
+            "coordinates": [[[-122.0, 37.0], [-121.9, 37.0]]],
+        }
+
+        add_regrid_parcel_to_geojson(geojson, parcel_polygon)
+
+        self.assertEqual(len(geojson["features"]), 1)
+        self.assertEqual(geojson["features"][0]["type"], "Feature")
+        self.assertEqual(
+            geojson["features"][0]["properties"]["feature_type"], "regrid_parcel"
+        )
+
+    def test_add_regrid_parcel_to_geojson_coord_list(self):
+        """Test adding Regrid parcel from coordinate list."""
+        from parcel_ai_json.api import add_regrid_parcel_to_geojson
+
+        geojson = {"type": "FeatureCollection", "features": []}
+        parcel_polygon = [[-122.0, 37.0], [-121.9, 37.0], [-121.9, 36.9]]
+
+        add_regrid_parcel_to_geojson(geojson, parcel_polygon)
+
+        self.assertEqual(len(geojson["features"]), 1)
+        self.assertEqual(geojson["features"][0]["geometry"]["type"], "Polygon")
+
+    def test_create_satellite_image_metadata(self):
+        """Test creating satellite image metadata."""
+        from parcel_ai_json.api import create_satellite_image_metadata
+        from pathlib import Path
+
+        image_path = Path("/tmp/test.jpg")
+        metadata = create_satellite_image_metadata(
+            image_path, 37.7749, -122.4194, 20
+        )
+
+        self.assertEqual(metadata["path"], "/tmp/test.jpg")
+        self.assertEqual(metadata["center_lat"], 37.7749)
+        self.assertEqual(metadata["center_lon"], -122.4194)
+        self.assertEqual(metadata["zoom_level"], 20)
+
+    def test_detect_endpoint_with_regrid_parcel(self):
+        """Test /detect endpoint with Regrid parcel polygon."""
+        import json
+
+        # Mock detector
+        mock_detector = Mock()
+        mock_detections = Mock()
+        mock_detections.to_geojson.return_value = {
+            "type": "FeatureCollection",
+            "features": [],
+        }
+        mock_detector.detect_all.return_value = mock_detections
+
+        # Override dependency
+        app.dependency_overrides[get_detector] = lambda: mock_detector
+
+        image_data = self._create_test_image()
+
+        parcel_polygon = {
+            "type": "Polygon",
+            "coordinates": [[[-122.0, 37.0], [-121.9, 37.0], [-121.9, 36.9]]],
+        }
+
+        response = self.client.post(
+            "/detect",
+            files={"image": ("test.jpg", image_data, "image/jpeg")},
+            data={
+                "center_lat": "37.7749",
+                "center_lon": "-122.4194",
+                "zoom_level": "20",
+                "detect_fences": "true",
+                "regrid_parcel_polygon": json.dumps(parcel_polygon),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # Should have parcel polygon in features
+        regrid_features = [
+            f
+            for f in data["features"]
+            if f["properties"].get("feature_type") == "regrid_parcel"
+        ]
+        self.assertEqual(len(regrid_features), 1)
 
 
 if __name__ == "__main__":

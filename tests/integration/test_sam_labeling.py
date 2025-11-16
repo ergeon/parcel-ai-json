@@ -47,14 +47,7 @@ def test_sam_labeling():
     # Step 1: Run all detections
     print("\nStep 1: Running property detections...")
     property_detector = PropertyDetectionService()
-    detections_result = property_detector.detect_from_image(
-        image_path=str(sample_image_path),
-        center_lat=37.7749,
-        center_lon=-122.4194,
-        zoom_level=20,
-        include_trees=True,
-        extract_tree_polygons=True,
-    )
+    detections_result = property_detector.detect_all(satellite_image)
 
     print(f"✓ Detected {len(detections_result.vehicles)} vehicles")
     print(f"✓ Detected {len(detections_result.pools)} pools")
