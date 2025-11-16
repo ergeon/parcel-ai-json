@@ -366,6 +366,149 @@ class TestSAMSegmentationService(unittest.TestCase):
                     if tmp_path.exists():
                         tmp_path.unlink()
 
+    @patch("segment_anything.sam_model_registry")
+    @patch("segment_anything.SamAutomaticMaskGenerator")
+    def test_segment_image_labeled(self, mock_generator_class, mock_registry):
+        """Test labeled segmentation with detections."""
+        # Setup mocks
+        mock_model = Mock()
+        mock_registry.return_value = mock_model
+        mock_generator = Mock()
+        mock_generator_class.return_value = mock_generator
+
+        # Mock SAM output
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:30, 10:30] = 1
+        mock_generator.generate.return_value = [
+            {
+                "segmentation": mock_mask,
+                "bbox": [10, 10, 20, 20],
+                "area": 400,
+                "predicted_iou": 0.9,
+                "stability_score": 0.95,
+            }
+        ]
+
+        service = SAMSegmentationService()
+
+        # Create test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            from PIL import Image
+
+            img = Image.new("RGB", (100, 100), color="red")
+            img.save(tmp_file.name)
+            tmp_path = Path(tmp_file.name)
+
+            try:
+                satellite_image = {
+                    "path": str(tmp_path),
+                    "center_lat": 37.7749,
+                    "center_lon": -122.4194,
+                    "zoom_level": 20,
+                }
+
+                detections = {"vehicles": [], "pools": [], "amenities": []}
+
+                with patch(
+                    "parcel_ai_json.sam_labeler.SAMSegmentLabeler.label_segments"
+                ) as mock_label:
+                    mock_label.return_value = []
+
+                    result = service.segment_image_labeled(
+                        satellite_image, detections, use_osm=False
+                    )
+
+                    self.assertIn("labeled_segments", result)
+                    self.assertIn("osm_buildings", result)
+                    self.assertIn("osm_roads", result)
+                    self.assertIsInstance(result["labeled_segments"], list)
+
+            finally:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+
+    @patch("segment_anything.sam_model_registry")
+    @patch("segment_anything.SamAutomaticMaskGenerator")
+    def test_segment_image_labeled_geojson(self, mock_generator_class, mock_registry):
+        """Test labeled segmentation with GeoJSON output."""
+        # Setup mocks
+        mock_model = Mock()
+        mock_registry.return_value = mock_model
+        mock_generator = Mock()
+        mock_generator_class.return_value = mock_generator
+
+        # Mock SAM output
+        mock_mask = np.zeros((100, 100), dtype=np.uint8)
+        mock_mask[10:30, 10:30] = 1
+        mock_generator.generate.return_value = [
+            {
+                "segmentation": mock_mask,
+                "bbox": [10, 10, 20, 20],
+                "area": 400,
+                "predicted_iou": 0.9,
+                "stability_score": 0.95,
+            }
+        ]
+
+        service = SAMSegmentationService()
+
+        # Create test image
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
+            from PIL import Image
+
+            img = Image.new("RGB", (100, 100), color="red")
+            img.save(tmp_file.name)
+            tmp_path = Path(tmp_file.name)
+
+            try:
+                satellite_image = {
+                    "path": str(tmp_path),
+                    "center_lat": 37.7749,
+                    "center_lon": -122.4194,
+                    "zoom_level": 20,
+                }
+
+                detections = {"vehicles": [], "pools": [], "amenities": []}
+
+                with patch(
+                    "parcel_ai_json.sam_labeler.SAMSegmentLabeler.label_segments"
+                ) as mock_label:
+                    from parcel_ai_json.sam_labeler import LabeledSAMSegment
+
+                    mock_labeled_segment = LabeledSAMSegment(
+                        segment_id=0,
+                        pixel_mask=mock_mask,
+                        pixel_bbox=(10, 10, 30, 30),
+                        geo_polygon=[
+                            (-122.0, 37.0),
+                            (-121.9, 37.0),
+                            (-121.9, 36.9),
+                            (-122.0, 36.9),
+                        ],
+                        area_pixels=400,
+                        area_sqm=50.0,
+                        stability_score=0.95,
+                        predicted_iou=0.9,
+                        primary_label="vehicle",
+                        label_confidence=0.85,
+                        label_source="overlap",
+                    )
+                    mock_label.return_value = [mock_labeled_segment]
+
+                    geojson = service.segment_image_labeled_geojson(
+                        satellite_image, detections, use_osm=False
+                    )
+
+                    self.assertEqual(geojson["type"], "FeatureCollection")
+                    self.assertIn("features", geojson)
+                    self.assertIsInstance(geojson["features"], list)
+                    # Should have labeled segments
+                    self.assertGreater(len(geojson["features"]), 0)
+
+            finally:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
