@@ -10,7 +10,7 @@ VENV_BIN := $(VENV)/bin
 PIP := $(VENV_BIN)/pip
 PYTEST := $(VENV_BIN)/pytest
 PYTHONPATH := .
-PROJECT_VERSION := $(shell $(PYTHON) -W ignore setup.py --version)
+PROJECT_VERSION := $(shell $(PYTHON) -W ignore setup.py --version 2>/dev/null || echo "0.1.0")
 NUM_EXAMPLES ?= 3
 
 # Docker configuration

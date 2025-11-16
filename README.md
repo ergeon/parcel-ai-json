@@ -1,6 +1,38 @@
 # Parcel AI JSON
 
+![Test Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-231%20passing-brightgreen)
+![Python](https://img.shields.io/badge/python-3.10+-blue)
+![Docker](https://img.shields.io/badge/docker-ready-blue)
+
 Unified property detection for satellite imagery with GeoJSON output.
+
+## Quick Start
+
+```bash
+# 1. Build Docker image
+make docker-build
+
+# 2. Run service
+make docker-run
+
+# 3. Test API
+curl http://localhost:8000/health
+
+# 4. View interactive docs
+open http://localhost:8000/docs
+```
+
+## Prerequisites
+
+- **Python 3.10+** (for local development)
+- **Docker** (for containerized deployment - recommended)
+- **Make** (for build automation)
+- **Git** (for version control)
+
+**Optional:**
+- **CUDA-capable GPU** (5-10x faster inference)
+- **Docker Compose** (for multi-container setups)
 
 ## Features
 
@@ -415,32 +447,48 @@ make docker-down
 
 ### Available Make Commands
 
-Run `make help` to see all available commands:
+Run `make help` to see all available commands.
 
-```
-Development:
-  install              Install package and dependencies in virtualenv
-  test                 Run tests with coverage
-  format               Format code with black
-  check                Run all checks (format, lint, test)
-  generate-examples    Generate detection examples
+**Development:**
+- `make install` - Install package and dependencies in virtualenv
+- `make dev-setup` - Quick development environment setup
+- `make test` - Run tests with coverage
+- `make test-verbose` - Run tests with verbose output
+- `make test-watch` - Run tests in watch mode (requires pytest-watch)
+- `make coverage` - Show coverage report in terminal
+- `make coverage-html` - Generate HTML coverage report (opens in browser)
+- `make format` - Format code with black
+- `make format-check` - Check formatting without making changes
+- `make lint` - Run flake8 linter
+- `make check` - Run all checks (format-check, lint, test)
+- `make clean` - Clean build artifacts and cache
+- `make clean-all` - Clean everything including virtualenv
 
-Docker (Recommended):
-  docker-build         Build Docker image
-  docker-run           Run Docker container locally
-  docker-stop          Stop and remove Docker container
-  docker-logs          Show Docker container logs
-  docker-shell         Open shell in running container
-  docker-up            Start services with Docker Compose
-  docker-down          Stop Docker Compose services
-  docker-rebuild       Rebuild and restart Docker container
-  docker-push          Push Docker image to registry
+**Docker (Recommended):**
+- `make docker-build` - Build Docker image
+- `make docker-build-clean` - Build Docker image without cache (forces full rebuild)
+- `make docker-run` - Run Docker container locally
+- `make docker-stop` - Stop and remove Docker container
+- `make docker-restart` - Restart Docker container
+- `make docker-rebuild` - Rebuild and restart Docker container
+- `make docker-logs` - Show Docker container logs
+- `make docker-shell` - Open shell in running Docker container
+- `make docker-up` - Start services with Docker Compose
+- `make docker-down` - Stop Docker Compose services
+- `make docker-clean` - Remove Docker image and clean build cache
+- `make docker-push` - Push Docker image to registry
 
-Package (Legacy):
-  build                Build source and wheel distributions
-  deploy               Build and deploy package to internal PyPI
-  tag                  Create and push git tag
-```
+**Examples:**
+- `make generate-examples` - Generate 3 detection examples (default)
+- `make generate-examples-10` - Generate 10 detection examples
+- `make generate-examples-20` - Generate 20 detection examples
+- `NUM_EXAMPLES=50 make generate-examples` - Generate custom number of examples
+
+**Package (Legacy):**
+- `make build` - Build source and wheel distributions
+- `make deploy` - Build and deploy package to internal PyPI
+- `make tag` - Create and push git tag for current version
+- `make install-ci` - Install deployment dependencies (twine, wheel)
 
 ## Package Deployment (Legacy PyPI)
 
