@@ -490,6 +490,85 @@ Run `make help` to see all available commands.
 - `make tag` - Create and push git tag for current version
 - `make install-ci` - Install deployment dependencies (twine, wheel)
 
+## Testing & Scripts
+
+### Test Datasets
+
+The project includes 100 complete test datasets in `output/test_datasets/`:
+- **Satellite images**: 512x512 PNG images from Google Maps (zoom level 20)
+- **Regrid parcels**: GeoJSON property boundaries (WGS84)
+- **Metadata**: CSV index with coordinates and quote IDs
+- **Coverage**: Properties across USA (CA, TX, FL, IL, PA, GA, NJ, MD, etc.)
+
+See `output/test_datasets/README.md` for details.
+
+### Running Detections on Test Data
+
+**Run N random detections:**
+
+```bash
+# Run 5 random detections (without SAM for speed)
+python scripts/run_random_detections.py 5 --no-sam
+
+# Run 10 with SAM segmentation
+python scripts/run_random_detections.py 10
+
+# Run 10 with Folium maps
+python scripts/run_random_detections.py 10 --map
+
+# Reproducible results with seed
+python scripts/run_random_detections.py 5 --seed 42
+```
+
+**Options:**
+- `--sam` / `--no-sam` - Include/exclude SAM segmentation (default: True)
+- `--map` - Generate Folium visualization maps
+- `--seed N` - Random seed for reproducibility
+
+**Output:** Results saved to `output/test_datasets/results/`
+
+### Visualization Scripts
+
+**Create Folium map from GeoJSON detections:**
+
+```bash
+python scripts/create_folium_from_geojson.py \
+  --geojson output/test_datasets/results/ADDRESS_detections.json \
+  --image output/test_datasets/satellite_images/ADDRESS.jpg \
+  --output map.html \
+  --lat 37.7749 \
+  --lon -122.4194 \
+  --zoom 20
+```
+
+Features:
+- Satellite image overlay
+- Color-coded detection layers (vehicles, trees, fences, pools, etc.)
+- Interactive popups with confidence scores and measurements
+- Regrid parcel boundary visualization
+- Layer controls for toggling features
+
+**Create SAM segmentation map:**
+
+```bash
+python scripts/create_sam_folium_map.py \
+  --geojson detections.json \
+  --image satellite.jpg \
+  --output sam_map.html \
+  --lat 37.7749 \
+  --lon -122.4194
+```
+
+### Available Scripts
+
+All scripts are in the `scripts/` directory:
+
+- **`run_random_detections.py`** - Run detections on N random test datasets
+- **`create_folium_from_geojson.py`** - Generate interactive Folium maps from detection GeoJSON
+- **`create_sam_folium_map.py`** - Visualize SAM segmentation results
+- **`generate_examples.py`** - Generate detection examples (used by make generate-examples)
+- **`find_and_copy_100_datasets.py`** - Copy test datasets from det-state-visualizer
+
 ## Package Deployment (Legacy PyPI)
 
 For legacy PyPI deployment (not recommended - use Docker instead):
