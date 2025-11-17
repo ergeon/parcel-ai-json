@@ -8,7 +8,6 @@ and generates an enhanced Folium map with layer controls.
 import json
 import sys
 from pathlib import Path
-from typing import Dict, Any
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,7 +45,7 @@ def create_folium_map_from_geojson(
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    print(f"Creating enhanced Folium map")
+    print("Creating enhanced Folium map")
     print("=" * 80)
     print(f"GeoJSON: {geojson_path.name}")
     print(f"Image: {image_path.name}")
@@ -69,8 +68,8 @@ def create_folium_map_from_geojson(
     trees = []
     tree_clusters = []
     fences = []
-    fence_debug_boundary = None
     osm_buildings = []
+    regrid_parcel = None
 
     for feature in features:
         props = feature.get("properties", {})
@@ -90,10 +89,10 @@ def create_folium_map_from_geojson(
             tree_clusters.append(feature)
         elif feature_type == "fence":
             fences.append(feature)
-        elif feature_type == "fence_debug_boundary":
-            fence_debug_boundary = feature
         elif feature_type == "osm_building":
             osm_buildings.append(feature)
+        elif feature_type == "regrid_parcel":
+            regrid_parcel = feature
 
     print(f"   ✓ {len(labeled_sam_segments)} labeled SAM segments")
     print(f"   ✓ {len(vehicles)} vehicles")
@@ -103,6 +102,7 @@ def create_folium_map_from_geojson(
     print(f"   ✓ {len(tree_clusters)} tree clusters (detectree)")
     print(f"   ✓ {len(fences)} fence segments")
     print(f"   ✓ {len(osm_buildings)} OSM buildings")
+    print(f"   ✓ {'1' if regrid_parcel else '0'} Regrid parcel")
 
     # Get image dimensions and calculate bounds
     print("\n2. Calculating image bounds...")
@@ -160,6 +160,9 @@ def create_folium_map_from_geojson(
     fences_group = folium.FeatureGroup(name=f"Fences ({len(fences)})", show=True)
     osm_buildings_group = folium.FeatureGroup(
         name=f"OSM Buildings ({len(osm_buildings)})", show=True
+    )
+    regrid_parcel_group = folium.FeatureGroup(
+        name="Regrid Parcel Boundary", show=True
     )
 
     # Add SAM segments with semantic labels
@@ -355,6 +358,34 @@ def create_folium_map_from_geojson(
             tooltip=f"OSM: {building_type}",
         ).add_to(osm_buildings_group)
 
+    # Add Regrid parcel boundary
+    print("12. Adding Regrid parcel boundary...")
+    if regrid_parcel:
+        props = regrid_parcel["properties"]
+        # Handle extra nesting level in coordinates
+        coords = regrid_parcel["geometry"]["coordinates"]
+        # Flatten if nested too deeply
+        while (
+            isinstance(coords[0][0], list)
+            and len(coords[0][0]) > 0
+            and isinstance(coords[0][0][0], list)
+        ):
+            coords = coords[0]
+        coords = coords[0] if isinstance(coords[0], list) else coords
+
+        folium.Polygon(
+            locations=[(lat, lon) for lon, lat in coords],
+            color="#FF00FF",  # Magenta
+            weight=3,
+            fill=False,
+            popup=folium.Popup(
+                "<b>Regrid Parcel Boundary</b><br>"
+                "Source: Regrid API",
+                max_width=200,
+            ),
+            tooltip="Parcel Boundary",
+        ).add_to(regrid_parcel_group)
+
     # Add all groups to map
     sam_group.add_to(m)
     vehicles_group.add_to(m)
@@ -364,6 +395,7 @@ def create_folium_map_from_geojson(
     tree_clusters_group.add_to(m)
     fences_group.add_to(m)
     osm_buildings_group.add_to(m)
+    regrid_parcel_group.add_to(m)
 
     # Add layer control (not collapsed - shows all layers by default)
     folium.LayerControl(collapsed=False).add_to(m)
@@ -381,8 +413,12 @@ def create_folium_map_from_geojson(
     <p style="margin:5px 0;"><span style="color:#800080;">●</span> Vehicles</p>
     <p style="margin:5px 0;"><span style="color:#0066cc;">●</span> Swimming Pools</p>
     <p style="margin:5px 0;"><span style="color:#ff8800;">●</span> Amenities</p>
-    <p style="margin:5px 0;"><span style="color:#228B22;">●</span> Trees (DeepForest)</p>
-    <p style="margin:5px 0;"><span style="color:#006400;">●</span> Tree Clusters (detectree)</p>
+    <p style="margin:5px 0;">
+        <span style="color:#228B22;">●</span> Trees (DeepForest)
+    </p>
+    <p style="margin:5px 0;">
+        <span style="color:#006400;">●</span> Tree Clusters (detectree)
+    </p>
     <p style="margin:5px 0;"><span style="color:#8B4513;">●</span> Fences</p>
     <p style="margin:5px 0;"><span style="color:#FFA500;">●</span> OSM Buildings</p>
     <p style="margin:5px 0;"><span style="color:#FF0000;">●</span> SAM: Vehicle</p>
@@ -418,21 +454,58 @@ def create_folium_map_from_geojson(
     print(f"  - Tree clusters: {len(tree_clusters)}")
     print(f"  - Fence segments: {len(fences)}")
     print(f"  - OSM buildings: {len(osm_buildings)}")
+    print(f"  - Regrid parcel: {'1' if regrid_parcel else '0'}")
     print(f"\nTotal: {len(features)} features")
     print("\nOpen the HTML file in your browser to explore!")
 
 
 if __name__ == "__main__":
-    # Generate map for 43 Goldeneye Ct
-    geojson_path = "output/examples/43_goldeneye_ct_full_detection.geojson"
-    image_path = "output/examples/images/43_goldeneye_ct_american_canyon_ca_94503_usa.jpg"
-    output_path = "output/examples/43_goldeneye_ct_enhanced_map.html"
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Create enhanced Folium map from detection GeoJSON"
+    )
+    parser.add_argument(
+        "--geojson",
+        required=True,
+        help="Path to detection GeoJSON file",
+    )
+    parser.add_argument(
+        "--image",
+        required=True,
+        help="Path to satellite image",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        help="Path to output HTML file",
+    )
+    parser.add_argument(
+        "--center-lat",
+        type=float,
+        required=True,
+        help="Image center latitude",
+    )
+    parser.add_argument(
+        "--center-lon",
+        type=float,
+        required=True,
+        help="Image center longitude",
+    )
+    parser.add_argument(
+        "--zoom-level",
+        type=int,
+        default=20,
+        help="Zoom level (default: 20)",
+    )
+
+    args = parser.parse_args()
 
     create_folium_map_from_geojson(
-        geojson_path=geojson_path,
-        image_path=image_path,
-        output_path=output_path,
-        center_lat=38.1771,
-        center_lon=-122.2436,
-        zoom_level=20,
+        geojson_path=args.geojson,
+        image_path=args.image,
+        output_path=args.output,
+        center_lat=args.center_lat,
+        center_lon=args.center_lon,
+        zoom_level=args.zoom_level,
     )

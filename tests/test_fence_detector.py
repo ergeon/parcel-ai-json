@@ -232,7 +232,7 @@ class TestFenceDetectionService(unittest.TestCase):
             zoom_level=20,
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertEqual(mask.dtype, np.float32)
         self.assertTrue(mask.max() <= 1.0)
         self.assertTrue(mask.min() >= 0.0)
@@ -257,7 +257,7 @@ class TestFenceDetectionService(unittest.TestCase):
             zoom_level=20,
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertTrue(mask.max() <= 1.0)
 
     def test_generate_fence_probability_mask_with_feature(self):
@@ -287,7 +287,7 @@ class TestFenceDetectionService(unittest.TestCase):
             zoom_level=20,
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
 
     def test_generate_fence_probability_mask_with_empty_polygon(self):
         """Test fence mask generation with empty polygon."""
@@ -298,7 +298,7 @@ class TestFenceDetectionService(unittest.TestCase):
             parcel_polygon=[], center_lat=37.7749, center_lon=-122.4194, zoom_level=20
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertEqual(mask.max(), 0.0)
 
     def test_generate_fence_probability_mask_with_too_few_points(self):
@@ -319,7 +319,7 @@ class TestFenceDetectionService(unittest.TestCase):
         )
 
         # Should return empty mask
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertEqual(mask.max(), 0.0)
 
     def test_fence_detection_to_geojson_without_debug_boundary(self):
@@ -432,7 +432,7 @@ class TestFenceDetectionService(unittest.TestCase):
             blur_sigma=0.0,  # Disable blur
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertTrue(mask.max() <= 1.0)
 
     def test_generate_fence_probability_mask_custom_line_width(self):
@@ -455,7 +455,7 @@ class TestFenceDetectionService(unittest.TestCase):
             line_width=5,  # Custom line width
         )
 
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertTrue(mask.max() <= 1.0)
 
     @patch("parcel_ai_json.fence_detector.Path")
@@ -542,7 +542,7 @@ class TestFenceDetectionService(unittest.TestCase):
         )
 
         # Should return empty mask
-        self.assertEqual(mask.shape, (640, 640))
+        self.assertEqual(mask.shape, (512, 512))
         self.assertEqual(mask.max(), 0.0)
 
     def test_detect_fences_with_regrid_parcel_polygon(self):
@@ -551,7 +551,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img = Image.new("RGB", (640, 640), color="white")
+            img = Image.new("RGB", (512, 512), color="white")
             img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
 
@@ -612,7 +612,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img = Image.new("RGB", (640, 640), color="white")
+            img = Image.new("RGB", (512, 512), color="white")
             img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
 
@@ -620,7 +620,7 @@ class TestFenceDetectionService(unittest.TestCase):
             result = service._prepare_4channel_input(tmp_path, None)
 
             # Should have 4 channels with zeros in 4th channel
-            self.assertEqual(result.shape, (640, 640, 4))
+            self.assertEqual(result.shape, (512, 512, 4))
             self.assertTrue(np.all(result[:, :, 3] == 0.0))  # 4th channel all zeros
         finally:
             os.unlink(tmp_path)
@@ -631,18 +631,18 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img = Image.new("RGB", (640, 640), color="white")
+            img = Image.new("RGB", (512, 512), color="white")
             img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
 
         try:
             # Create uint8 fence mask
-            fence_mask = np.ones((640, 640), dtype=np.uint8) * 255
+            fence_mask = np.ones((512, 512), dtype=np.uint8) * 255
 
             result = service._prepare_4channel_input(tmp_path, fence_mask)
 
             # Should normalize to [0, 1]
-            self.assertEqual(result.shape, (640, 640, 4))
+            self.assertEqual(result.shape, (512, 512, 4))
             self.assertTrue(result[:, :, 3].max() <= 1.0)
             self.assertTrue(result[:, :, 3].min() >= 0.0)
         finally:
@@ -654,7 +654,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img = Image.new("RGB", (640, 640), color="white")
+            img = Image.new("RGB", (512, 512), color="white")
             img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
 
@@ -664,13 +664,13 @@ class TestFenceDetectionService(unittest.TestCase):
 
             result = service._prepare_4channel_input(tmp_path, fence_mask)
 
-            # Should resize to 640x640
-            self.assertEqual(result.shape, (640, 640, 4))
+            # Should resize to 512x512
+            self.assertEqual(result.shape, (512, 512, 4))
         finally:
             os.unlink(tmp_path)
 
     def test_prepare_4channel_input_resizes_image(self):
-        """Test _prepare_4channel_input resizes non-640x640 images."""
+        """Test _prepare_4channel_input resizes non-512x512 images."""
         service = FenceDetectionService()
 
         # Create temporary test image with different size
@@ -682,8 +682,8 @@ class TestFenceDetectionService(unittest.TestCase):
         try:
             result = service._prepare_4channel_input(tmp_path, None)
 
-            # Should resize to 640x640
-            self.assertEqual(result.shape, (640, 640, 4))
+            # Should resize to 512x512
+            self.assertEqual(result.shape, (512, 512, 4))
         finally:
             os.unlink(tmp_path)
 
@@ -789,7 +789,7 @@ class TestFenceDetectionService(unittest.TestCase):
 
         # Create temporary test image
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-            img = Image.new("RGB", (640, 640), color="white")
+            img = Image.new("RGB", (512, 512), color="white")
             img.save(tmp.name, "JPEG")
             tmp_path = tmp.name
 

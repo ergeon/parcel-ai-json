@@ -382,10 +382,11 @@ async def detect_property(
     detect_fences: bool = Form(
         False, description="Include fence detection (default: False)"
     ),
-    regrid_parcel_polygon: Optional[str] = Form(
-        None,
+    regrid_parcel_polygon: str = Form(
+        ...,
         description=(
-            "Optional Regrid parcel polygon as JSON string " "(for fence detection)"
+            "Required Regrid parcel polygon as JSON string "
+            "(coordinates array in WGS84 format)"
         ),
     ),
     detector: PropertyDetectionService = Depends(get_detector),
@@ -403,7 +404,7 @@ async def detect_property(
         sam_points_per_side: SAM grid sampling density (default: 32)
         label_sam_segments: Label SAM segments with semantic labels (default: True)
         detect_fences: Include fence detection (default: False)
-        regrid_parcel_polygon: Optional Regrid parcel polygon as JSON string
+        regrid_parcel_polygon: Required Regrid parcel polygon as JSON string
         detector: Injected PropertyDetectionService (for testing)
         sam_service: Injected SAMSegmentationService (for testing)
 
@@ -425,9 +426,8 @@ async def detect_property(
         validate_sam_points_per_side(sam_points_per_side)
 
     # Parse Regrid parcel polygon (Business Logic Layer)
-    parcel_polygon = None
-    if detect_fences and regrid_parcel_polygon is not None:
-        parcel_polygon = parse_regrid_parcel_polygon(regrid_parcel_polygon)
+    # Always required now - parse it regardless of fence detection
+    parcel_polygon = parse_regrid_parcel_polygon(regrid_parcel_polygon)
 
     # File handling (I/O Layer)
     temp_dir = None
@@ -532,9 +532,8 @@ async def detect_property(
                             f"Added {num_buildings} OSM buildings to " f"GeoJSON output"
                         )
 
-            # Add regrid parcel polygon to GeoJSON output if provided
-            if parcel_polygon is not None:
-                add_regrid_parcel_to_geojson(geojson, parcel_polygon)
+            # Add regrid parcel polygon to GeoJSON output (always included now)
+            add_regrid_parcel_to_geojson(geojson, parcel_polygon)
 
             logger.info(
                 f"Detection complete: {len(geojson['features'])} total features"

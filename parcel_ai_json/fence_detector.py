@@ -72,8 +72,7 @@ class FenceDetection:
                 }
             )
 
-        # Add debug boundary showing HED mask extent
-        # (512x512 in HED space, 640x640 in satellite space)
+        # Add debug boundary showing standardized image extent
         if include_debug_boundary and self.debug_boundary is not None:
             features.append(
                 {
@@ -84,9 +83,7 @@ class FenceDetection:
                     },
                     "properties": {
                         "feature_type": "fence_debug_boundary",
-                        "description": (
-                            "HED mask boundary " "(512x512 scaled to 640x640)"
-                        ),
+                        "description": "Standardized image boundary (512x512)",
                     },
                 }
             )
@@ -101,16 +98,11 @@ class FenceDetectionService:
     - Channel 3: Fence probability from Regrid parcel data
     """
 
-    # Image dimensions
-    SATELLITE_IMAGE_SIZE = 640  # Google Maps satellite image size (px)
-    HED_MODEL_OUTPUT_SIZE = 512  # HED model output size (px)
+    # Image dimensions - standardized to 512x512 for both satellite and HED
+    STANDARD_IMAGE_SIZE = 512  # All images normalized to 512x512 (px)
 
-    # Coordinate centers (for scaling between coordinate spaces)
-    HED_CENTER_PX = HED_MODEL_OUTPUT_SIZE // 2  # 256
-    SATELLITE_CENTER_PX = SATELLITE_IMAGE_SIZE // 2  # 320
-
-    # Scaling factor from HED space to satellite space
-    HED_TO_SATELLITE_SCALE = SATELLITE_IMAGE_SIZE / HED_MODEL_OUTPUT_SIZE  # 1.25
+    # Coordinate center
+    IMAGE_CENTER_PX = STANDARD_IMAGE_SIZE // 2  # 256
 
     def __init__(
         self,
@@ -196,7 +188,7 @@ class FenceDetectionService:
             blur_sigma: Standard deviation for Gaussian blur (default: 2.0)
 
         Returns:
-            np.ndarray of shape (640, 640), dtype float32, values in [0, 1]
+            np.ndarray of shape (512, 512), dtype float32, values in [0, 1]
         """
         try:
             import cv2
@@ -227,15 +219,15 @@ class FenceDetectionService:
                 "WARNING: Invalid parcel polygon - using empty fence probability mask"
             )
             return np.zeros(
-                (self.SATELLITE_IMAGE_SIZE, self.SATELLITE_IMAGE_SIZE), dtype=np.float32
+                (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE), dtype=np.float32
             )
 
         # Create coordinate converter using factory method
         image_metadata = {
             "center_lat": center_lat,
             "center_lon": center_lon,
-            "width_px": self.SATELLITE_IMAGE_SIZE,
-            "height_px": self.SATELLITE_IMAGE_SIZE,
+            "width_px": self.STANDARD_IMAGE_SIZE,
+            "height_px": self.STANDARD_IMAGE_SIZE,
             "zoom_level": zoom_level,
         }
         coord_converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
@@ -246,8 +238,10 @@ class FenceDetectionService:
             x, y = coord_converter.geo_to_pixel(lon, lat)
             pixel_coords.append([int(x), int(y)])
 
-        # Create blank mask (640x640 to match Google Maps image size)
-        mask = np.zeros((640, 640), dtype=np.uint8)
+        # Create blank mask (512x512)
+        mask = np.zeros(
+            (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE), dtype=np.uint8
+        )
 
         # Draw parcel boundary
         if len(pixel_coords) >= 2:
@@ -300,18 +294,6 @@ class FenceDetectionService:
         """
         self._load_model()
 
-        # Generate fence probability mask from parcel polygon if provided
-        if regrid_parcel_polygon is not None:
-            center_lat = satellite_image["center_lat"]
-            center_lon = satellite_image["center_lon"]
-            zoom_level = satellite_image.get("zoom_level", 20)
-            fence_probability_mask = self.generate_fence_probability_mask(
-                parcel_polygon=regrid_parcel_polygon,
-                center_lat=center_lat,
-                center_lon=center_lon,
-                zoom_level=zoom_level,
-            )
-
         # Extract metadata
         image_path = satellite_image["path"]
         center_lat = satellite_image["center_lat"]
@@ -322,7 +304,21 @@ class FenceDetectionService:
         if not Path(image_path).exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
-        # Prepare 4-channel input
+        print(
+            f"✓ Using standardized image size: "
+            f"{self.STANDARD_IMAGE_SIZE}x{self.STANDARD_IMAGE_SIZE}"
+        )
+
+        # Generate fence probability mask from parcel polygon if provided
+        if regrid_parcel_polygon is not None:
+            fence_probability_mask = self.generate_fence_probability_mask(
+                parcel_polygon=regrid_parcel_polygon,
+                center_lat=center_lat,
+                center_lon=center_lon,
+                zoom_level=zoom_level,
+            )
+
+        # Prepare 4-channel input (resizes to 512x512)
         input_4ch = self._prepare_4channel_input(image_path, fence_probability_mask)
 
         # Run inference
@@ -358,37 +354,51 @@ class FenceDetectionService:
         )
 
     def _prepare_4channel_input(
-        self, image_path: str, fence_probability_mask: Optional[np.ndarray]
+        self,
+        image_path: str,
+        fence_probability_mask: Optional[np.ndarray],
     ) -> np.ndarray:
         """Prepare 4-channel input (RGB + fence probability).
 
+        Always resizes satellite image to STANDARD_IMAGE_SIZE x STANDARD_IMAGE_SIZE.
+
+        Args:
+            image_path: Path to satellite image (will be resized)
+            fence_probability_mask: Optional fence probability mask
+
         Returns:
-            np.ndarray of shape (640, 640, 4) with values in [0, 1]
+            np.ndarray of shape (STANDARD_IMAGE_SIZE, STANDARD_IMAGE_SIZE, 4)
+            with values in [0, 1]
         """
         from PIL import Image
 
-        # Load RGB image
+        # Load RGB image and resize to standard size
         rgb_image = Image.open(image_path).convert("RGB")
 
-        # Resize to 640x640 if needed (match Google Maps image size)
-        if rgb_image.size != (640, 640):
-            rgb_image = rgb_image.resize((640, 640), Image.LANCZOS)
+        # Always resize to standard size for consistent processing
+        if rgb_image.size != (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE):
+            rgb_image = rgb_image.resize(
+                (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE), Image.LANCZOS
+            )
 
         rgb_array = np.array(rgb_image).astype(np.float32) / 255.0
 
         # Prepare fence probability channel
         if fence_probability_mask is None:
             # Generate empty mask (all zeros)
-            fence_prob = np.zeros((640, 640), dtype=np.float32)
+            fence_prob = np.zeros(
+                (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE), dtype=np.float32
+            )
             print(
                 "WARNING: No fence probability mask provided - using zeros "
                 "(lower accuracy expected)"
             )
         else:
             # Normalize to [0, 1]
-            if fence_probability_mask.shape != (640, 640):
+            target_shape = (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE)
+            if fence_probability_mask.shape != target_shape:
                 fence_prob = np.array(
-                    Image.fromarray(fence_probability_mask).resize((640, 640))
+                    Image.fromarray(fence_probability_mask).resize(target_shape)
                 ).astype(np.float32)
                 if fence_prob.max() > 1.0:
                     fence_prob = fence_prob / 255.0
@@ -398,7 +408,9 @@ class FenceDetectionService:
                     fence_prob = fence_prob / 255.0
 
         # Stack into 4 channels
-        input_4ch = np.zeros((640, 640, 4), dtype=np.float32)
+        input_4ch = np.zeros(
+            (self.STANDARD_IMAGE_SIZE, self.STANDARD_IMAGE_SIZE, 4), dtype=np.float32
+        )
         input_4ch[:, :, :3] = rgb_array  # RGB channels
         input_4ch[:, :, 3] = fence_prob  # Fence probability channel
 
@@ -410,10 +422,22 @@ class FenceDetectionService:
         center_lat: float,
         center_lon: float,
         zoom_level: int,
-    ) -> List[List[Tuple[float, float]]]:
+    ) -> Tuple[List[List[Tuple[float, float]]], List[Tuple[float, float]]]:
         """Extract fence polygons from binary mask.
 
         Uses connected components and contour extraction.
+        Both HED output and satellite images are standardized to STANDARD_IMAGE_SIZE,
+        so no scaling is needed.
+
+        Args:
+            binary_mask: Binary mask from HED model
+                (STANDARD_IMAGE_SIZE x STANDARD_IMAGE_SIZE)
+            center_lat: Center latitude of satellite image
+            center_lon: Center longitude of satellite image
+            zoom_level: Zoom level of satellite image
+
+        Returns:
+            Tuple of (fence_polygons, debug_boundary)
         """
         try:
             import cv2
@@ -421,25 +445,20 @@ class FenceDetectionService:
         except ImportError:
             print("WARNING: opencv-python and scipy required for polygon extraction")
             print("Install with: pip install opencv-python scipy")
-            return []
+            return [], []
 
         # Find connected components
         labeled, num_features = ndimage.label(binary_mask)
 
-        # Create coordinate converter using factory method
-        # Note: HED model outputs at HED_MODEL_OUTPUT_SIZE, so we need to
-        # scale coordinates back to SATELLITE_IMAGE_SIZE
+        # Create coordinate converter using standardized image size
         image_metadata = {
             "center_lat": center_lat,
             "center_lon": center_lon,
-            "width_px": self.SATELLITE_IMAGE_SIZE,
-            "height_px": self.SATELLITE_IMAGE_SIZE,
+            "width_px": self.STANDARD_IMAGE_SIZE,
+            "height_px": self.STANDARD_IMAGE_SIZE,
             "zoom_level": zoom_level,
         }
         coord_converter = ImageCoordinateConverter.from_satellite_image(image_metadata)
-
-        # Scale factor from HED output to satellite image
-        scale_factor = self.HED_TO_SATELLITE_SCALE
 
         polygons = []
 
@@ -469,21 +488,17 @@ class FenceDetectionService:
                     continue
 
                 # Convert pixel coordinates to geographic
-                # Scale from 512x512 to 640x640 preserving shared center
+                # No scaling needed - both HED and satellite are STANDARD_IMAGE_SIZE
                 geo_points = []
                 for point in contour.squeeze():
                     if point.ndim == 1 and len(point) == 2:
                         x, y = point
-                        # Convert to offset from HED center
-                        offset_x = x - self.HED_CENTER_PX
-                        offset_y = y - self.HED_CENTER_PX
-                        # Scale the offset
-                        scaled_offset_x = offset_x * scale_factor
-                        scaled_offset_y = offset_y * scale_factor
-                        # Add to satellite center
-                        x_scaled = self.SATELLITE_CENTER_PX + scaled_offset_x
-                        y_scaled = self.SATELLITE_CENTER_PX + scaled_offset_y
-                        lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
+                        # Clamp to valid pixel range
+                        # OpenCV contours can return edge coordinates
+                        x = max(0, min(x, self.STANDARD_IMAGE_SIZE - 1))
+                        y = max(0, min(y, self.STANDARD_IMAGE_SIZE - 1))
+                        # Direct conversion - no scaling needed
+                        lon, lat = coord_converter.pixel_to_geo(x, y)
                         geo_points.append((lon, lat))
 
                 if len(geo_points) >= 3:
@@ -491,29 +506,20 @@ class FenceDetectionService:
                     geo_points.append(geo_points[0])
                     polygons.append(geo_points)
 
-        # Create debug boundary rectangle showing HED mask extent
-        # HED coords (0,0) to (HED_MODEL_OUTPUT_SIZE, HED_MODEL_OUTPUT_SIZE)
-        # mapped to satellite space
-        hed_max = self.HED_MODEL_OUTPUT_SIZE
+        # Create debug boundary rectangle showing image extent
+        # Corners of standardized image (0,0) to
+        # (STANDARD_IMAGE_SIZE-1, STANDARD_IMAGE_SIZE-1)
+        max_coord = self.STANDARD_IMAGE_SIZE - 1
         boundary_coords = [
             (0, 0),  # Top-left
-            (hed_max, 0),  # Top-right
-            (hed_max, hed_max),  # Bottom-right
-            (0, hed_max),  # Bottom-left
+            (max_coord, 0),  # Top-right
+            (max_coord, max_coord),  # Bottom-right
+            (0, max_coord),  # Bottom-left
             (0, 0),  # Close
         ]
         boundary_geo = []
         for x, y in boundary_coords:
-            # Convert to offset from HED center
-            offset_x = x - self.HED_CENTER_PX
-            offset_y = y - self.HED_CENTER_PX
-            # Scale the offset
-            scaled_offset_x = offset_x * scale_factor
-            scaled_offset_y = offset_y * scale_factor
-            # Add to satellite center
-            x_scaled = self.SATELLITE_CENTER_PX + scaled_offset_x
-            y_scaled = self.SATELLITE_CENTER_PX + scaled_offset_y
-            lon, lat = coord_converter.pixel_to_geo(x_scaled, y_scaled)
+            lon, lat = coord_converter.pixel_to_geo(x, y)
             boundary_geo.append((lon, lat))
 
         return polygons, boundary_geo
