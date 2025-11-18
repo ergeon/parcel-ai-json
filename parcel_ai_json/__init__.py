@@ -33,6 +33,10 @@ from parcel_ai_json.sam_labeler import (
     LabeledSAMSegment,
     LABEL_SCHEMA,
 )
+from parcel_ai_json.grounded_sam_detector import (
+    GroundedSAMDetector,
+    GroundedDetection,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -54,4 +58,7 @@ __all__ = [
     "SAMSegmentLabeler",
     "LabeledSAMSegment",
     "LABEL_SCHEMA",
+    # Grounded-SAM (text-prompted detection + segmentation)
+    "GroundedSAMDetector",
+    "GroundedDetection",
 ]

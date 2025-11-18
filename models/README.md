@@ -29,6 +29,15 @@ This directory contains the ML model weights used for property feature detection
   - Alternative models available: vit_b (375 MB), vit_l (1.2 GB) - but not included
   - Source: sam_segmentation.py:75, 128
 
+### GroundingDINO Models
+
+- **`groundingdino_swinb_cogcoor.pth`** (895 MB) - GroundingDINO SwinB model
+  - Used for: Open-vocabulary object detection with text prompts
+  - Detects objects using natural language (e.g., "driveway", "patio", "shed", "gazebo")
+  - Combined with SAM for precise segmentation masks (Grounded-SAM)
+  - Source: grounded_sam_detector.py:134
+  - Alternative: `groundingdino_swint_ogc.pth` (700 MB, faster but less accurate)
+
 ## Tree Detection Models
 
 Tree detection uses models that are **auto-downloaded** (not stored in this directory):
@@ -44,10 +53,11 @@ Tree detection uses models that are **auto-downloaded** (not stored in this dire
 
 ## Total Size
 
-**Current models/**: 2.6 GB
+**Current models/**: 3.5 GB
 - hed_fence_mixed_finetune.pth: 168 MB
 - sam_vit_h_4b8939.pth: 2.4 GB
 - yolov8m-obb.pt: 51 MB
+- groundingdino_swinb_cogcoor.pth: 895 MB
 
 ## Download
 
