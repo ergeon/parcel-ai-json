@@ -70,6 +70,10 @@ RUN echo "SAM models available at /app/models/:" && \
 RUN echo "HED fence model (mixed finetune) available at /app/models/:" && \
     ls -lh /app/models/hed_fence_mixed_finetune.pth
 
+# Verify GroundingDINO model is available
+RUN echo "GroundingDINO model available at /app/models/:" && \
+    ls -lh /app/models/groundingdino_swinb_cogcoor.pth
+
 # Pre-download detectree model data
 RUN python -c "\
 import detectree as dtr; \
