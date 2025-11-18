@@ -136,7 +136,8 @@ class GroundedSAMDetector:
             if not grounding_path.exists():
                 raise FileNotFoundError(
                     f"GroundingDINO model not found: {grounding_path}\n"
-                    "Download from: https://github.com/IDEA-Research/GroundingDINO/releases"
+                    "Download from: https://github.com/IDEA-Research/"
+                    "GroundingDINO/releases"
                 )
 
         # GroundingDINO also needs config file
@@ -184,8 +185,8 @@ class GroundedSAMDetector:
                 if not sam_path.exists():
                     raise FileNotFoundError(
                         f"SAM model not found: {sam_path}\n"
-                        "Download from: "
-                        "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+                        "Download from: https://dl.fbaipublicfiles.com/"
+                        "segment_anything/sam_vit_h_4b8939.pth"
                     )
 
             print(f"Loading SAM from: {sam_path}")
@@ -241,10 +242,19 @@ class GroundedSAMDetector:
 
         # Run GroundingDINO detection
         from groundingdino.util.inference import predict
+        import groundingdino.datasets.transforms as T
+
+        # Preprocess PIL Image to tensor (same as load_image function)
+        transform = T.Compose([
+            T.RandomResize([800], max_size=1333),
+            T.ToTensor(),
+            T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
+        image_tensor, _ = transform(image_pil, None)
 
         boxes, logits, phrases = predict(
             model=self._grounding_model,
-            image=image_pil,
+            image=image_tensor,
             caption=text_prompt,
             box_threshold=self.box_threshold,
             text_threshold=self.text_threshold,
@@ -290,8 +300,9 @@ class GroundedSAMDetector:
                 lon_max, lat_min = coordinate_converter.pixel_to_geo(x2, y2)
                 geo_bbox = (lon_min, lat_min, lon_max, lat_max)
 
-                # Calculate area in square meters
-                area_sqm = coordinate_converter.calculate_area_sqm(geo_polygon)
+                # Calculate area in square meters (using approximate method)
+                # TODO: Add proper geodesic area calculation
+                area_sqm = None
             else:
                 geo_bbox = (float(x1), float(y1), float(x2), float(y2))
                 area_sqm = None
@@ -312,7 +323,7 @@ class GroundedSAMDetector:
         return detections
 
     def _box_cxcywh_to_xyxy(self, boxes: torch.Tensor) -> torch.Tensor:
-        """Convert boxes from (center_x, center_y, width, height) to (x1, y1, x2, y2)."""
+        """Convert boxes from (cx, cy, w, h) to (x1, y1, x2, y2)."""
         cx, cy, w, h = boxes.unbind(-1)
         x1 = cx - 0.5 * w
         y1 = cy - 0.5 * h

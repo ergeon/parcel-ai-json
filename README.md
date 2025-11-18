@@ -43,6 +43,7 @@ open http://localhost:8000/docs
 - **Tree Coverage Detection**: Estimate tree coverage percentage using detectree (Docker-based)
 - **Fence Detection**: Detect fence lines and boundaries using HED (Holistically-Nested Edge Detection) with VGG16 backbone
 - **SAM Segmentation**: General-purpose image segmentation with semantic labeling (vehicles, driveways, buildings, etc.)
+- **Grounded-SAM Detection**: Text-prompted object detection using natural language (e.g., "driveway", "patio", "shed", "gazebo") - combines GroundingDINO with SAM for open-vocabulary detection and segmentation
 - **OSM Integration**: Fetch OpenStreetMap data for parcel context and geographic features
 - **GeoJSON Output**: Returns detections as GeoJSON FeatureCollection with geographic coordinates
 - **Coordinate Conversion**: Geodesic pixel → WGS84 transformation using pyproj
@@ -150,6 +151,13 @@ curl -X POST http://localhost:8000/detect/fences \
   -F "center_lon=-122.4194" \
   -F "fence_mask=@fence_probability.png" \
   -F "threshold=0.1"
+
+# Grounded-SAM: Text-prompted detection (custom objects)
+curl -X POST http://localhost:8000/detect/grounded-sam \
+  -F "image=@satellite.jpg" \
+  -F "center_lat=37.7749" \
+  -F "center_lon=-122.4194" \
+  -F "prompts=driveway, patio, deck, shed, gazebo, pergola, hot tub"
 ```
 
 **Include fence detection in unified detection:**

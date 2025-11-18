@@ -22,6 +22,7 @@ from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
 from parcel_ai_json.sam_segmentation import SAMSegmentationService
 from parcel_ai_json.sam_labeler import SAMSegmentLabeler
+from parcel_ai_json.grounded_sam_detector import GroundedSAMDetector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,13 +31,17 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="Parcel AI Property Detection API",
-    description="Detect vehicles, pools, amenities, and trees in satellite imagery",
+    description=(
+        "Detect vehicles, pools, amenities, trees, fences, "
+        "and custom objects in satellite imagery"
+    ),
     version="0.1.0",
 )
 
 # Initialize detection service (lazy-loaded on first request)
 _detector = None
 _sam_service = None
+_grounded_sam_detector = None
 
 
 # ============================================================================
@@ -100,6 +105,28 @@ def get_sam_service() -> SAMSegmentationService:
 
         logger.info(f"SAMSegmentationService initialized on {device}")
     return _sam_service
+
+
+def get_grounded_sam_detector() -> GroundedSAMDetector:
+    """Get or create the GroundedSAMDetector singleton.
+
+    This acts as a dependency provider for FastAPI's dependency injection.
+    Can be overridden in tests using app.dependency_overrides.
+    """
+    global _grounded_sam_detector
+    if _grounded_sam_detector is None:
+        device = get_best_device()
+        logger.info(f"Initializing GroundedSAMDetector (device: {device})...")
+
+        _grounded_sam_detector = GroundedSAMDetector(
+            box_threshold=0.25,
+            text_threshold=0.20,
+            use_sam=True,
+            device=device,
+        )
+
+        logger.info(f"GroundedSAMDetector initialized on {device}")
+    return _grounded_sam_detector
 
 
 # ============================================================================
@@ -793,6 +820,109 @@ async def detect_fences(
     except Exception as e:
         logger.error(f"Fence detection failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Fence detection failed: {str(e)}")
+
+    finally:
+        cleanup_temp_dir(temp_dir)
+
+
+@app.post("/detect/grounded-sam")
+async def detect_grounded_sam(
+    image: UploadFile = File(..., description="Satellite image file (JPEG/PNG)"),
+    center_lat: float = Form(..., description="Image center latitude (WGS84)"),
+    center_lon: float = Form(..., description="Image center longitude (WGS84)"),
+    zoom_level: int = Form(20, description="Zoom level (default: 20)"),
+    prompts: str = Form(
+        ...,
+        description=(
+            "Comma-separated text prompts for objects to detect "
+            "(e.g., 'driveway, patio, shed, gazebo')"
+        ),
+    ),
+    grounded_sam: GroundedSAMDetector = Depends(get_grounded_sam_detector),
+):
+    """Detect property features using text prompts with Grounded-SAM.
+
+    Combines GroundingDINO (text-prompted detection) with SAM (segmentation)
+    for open-vocabulary object detection.
+
+    Args:
+        image: Satellite image file (JPEG or PNG)
+        center_lat: Center latitude of image (WGS84)
+        center_lon: Center longitude of image (WGS84)
+        zoom_level: Zoom level (default: 20)
+        prompts: Comma-separated text prompts (e.g., "driveway, patio, shed")
+        grounded_sam: Injected GroundedSAMDetector (for testing)
+
+    Returns:
+        GeoJSON FeatureCollection with detected objects
+
+    Example:
+        curl -X POST http://localhost:8000/detect/grounded-sam \\
+          -F "image=@image.jpg" \\
+          -F "center_lat=37.7749" \\
+          -F "center_lon=-122.4194" \\
+          -F "zoom_level=20" \\
+          -F "prompts=driveway, patio, deck, shed, gazebo"
+    """
+    logger.info(
+        f"Processing Grounded-SAM detection: lat={center_lat}, lon={center_lon}, "
+        f"prompts='{prompts}'"
+    )
+
+    # Validate inputs
+    validate_image_content_type(image.content_type)
+    validate_coordinates(center_lat, center_lon)
+    validate_zoom_level(zoom_level)
+
+    temp_dir = None
+    try:
+        temp_dir, image_path = save_uploaded_file(image)
+
+        # Create coordinate converter
+        from PIL import Image as PILImage
+        from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+
+        pil_image = PILImage.open(image_path)
+        converter = ImageCoordinateConverter(
+            center_lat=center_lat,
+            center_lon=center_lon,
+            image_width_px=pil_image.width,
+            image_height_px=pil_image.height,
+            zoom_level=zoom_level,
+        )
+
+        # Parse prompts (comma-separated)
+        prompt_list = [p.strip() for p in prompts.split(",") if p.strip()]
+        logger.info(f"Parsed {len(prompt_list)} prompts: {prompt_list}")
+
+        # Run detection
+        detections = grounded_sam.detect(
+            image=pil_image,
+            prompts=prompt_list,
+            coordinate_converter=converter,
+        )
+
+        # Convert to GeoJSON
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [det.to_geojson_feature() for det in detections],
+            "metadata": {
+                "prompts": prompt_list,
+                "num_detections": len(detections),
+                "center_lat": center_lat,
+                "center_lon": center_lon,
+                "zoom_level": zoom_level,
+            },
+        }
+
+        logger.info(f"Grounded-SAM complete: {len(detections)} detections found")
+        return JSONResponse(content=geojson)
+
+    except Exception as e:
+        logger.error(f"Grounded-SAM detection failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Grounded-SAM detection failed: {str(e)}"
+        )
 
     finally:
         cleanup_temp_dir(temp_dir)
