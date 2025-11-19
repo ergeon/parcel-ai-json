@@ -375,6 +375,49 @@ def test_detect_vehicles(mock_yolo):
     # ... test logic
 ```
 
+### Test Datasets
+
+The project includes 100 real-world test properties for validation:
+
+```
+output/test_datasets/
+├── test_index.csv                    # Property index (100 addresses with coordinates)
+├── satellite_images/                 # 512x512 PNG images (Google Maps, zoom 20)
+│   ├── 23847_oak_meadow_dr_ramona_ca_92065.jpg
+│   └── ... (100 images)
+├── regrid_parcels/                   # GeoJSON property boundaries (WGS84)
+│   ├── 23847_oak_meadow_dr_ramona_ca_92065_usa.json
+│   └── ... (100 parcels)
+└── results/                          # Detection outputs (generated)
+```
+
+**Dataset Coverage:**
+- **100 properties** across USA (CA, TX, FL, IL, PA, GA, NJ, MD, NC, SC, etc.)
+- **Real coordinates** from Ergeon quote database
+- **Parcel polygons** from Regrid API
+- **High-quality imagery** - 512x512 pixels at zoom level 20
+
+**Usage:**
+```bash
+# Run detections on random test properties
+python scripts/run_random_detections.py 5
+
+# With visualization maps
+python scripts/run_random_detections.py 10 --map
+
+# Specific property (example: Ramona, CA)
+python scripts/generate_examples.py
+```
+
+**Index Format** (`test_index.csv`):
+```csv
+quote_id,image_filename,latitude,longitude
+1822784,23847_oak_meadow_dr_ramona_ca_92065.jpg,33.0144065,-116.8140761
+...
+```
+
+See `output/test_datasets/README.md` and README.md "Testing & Scripts" section for complete documentation.
+
 ## Model Management
 
 ### Auto-Downloaded Models

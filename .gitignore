@@ -58,3 +58,4 @@ models/*.pth
 
 # Deployment credentials
 pypirc.conf
+.env

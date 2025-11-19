@@ -32,8 +32,14 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (excluding GroundingDINO which needs special handling)
+RUN grep -v "GroundingDINO" requirements.txt > requirements_base.txt && \
+    pip install --no-cache-dir -r requirements_base.txt
+
+# Install GroundingDINO separately with --no-build-isolation
+# (avoids PyTorch installation in isolated build environment)
+RUN pip install --no-cache-dir --no-build-isolation \
+    git+https://github.com/IDEA-Research/GroundingDINO.git
 
 # Install additional dependencies for tree detection and API
 RUN pip install --no-cache-dir \
@@ -82,12 +88,8 @@ clf = dtr.Classifier(); \
 print('Detectree ready'); \
 "
 
-# Copy pre-downloaded DeepForest model (ResNet50 backbone)
-# Avoids ~6.5 minute download during each build
-RUN mkdir -p /root/.cache/torch/hub/checkpoints
-COPY models/resnet50-0676ba61.pth /root/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth
-RUN echo "DeepForest model copied to /root/.cache/torch/hub/checkpoints/" && \
-    ls -lh /root/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth
+# Note: DeepForest ResNet50 backbone auto-downloads on first use
+# (~97MB from PyTorch Hub). Pre-downloading was removed to simplify build.
 
 # Create directory for temporary file uploads
 RUN mkdir -p /tmp/uploads && chmod 777 /tmp/uploads

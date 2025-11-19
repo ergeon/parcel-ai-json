@@ -17,15 +17,22 @@ detectree==0.8.0      # Tree coverage detection (pixel-level classification)
 git+https://github.com/facebookresearch/segment-anything.git  # Zero-shot segmentation
 opencv-python>=4.8.0  # Required for SAM polygon extraction from masks
 
-# GroundingDINO - Open-vocabulary object detection with text prompts
-git+https://github.com/IDEA-Research/GroundingDINO.git  # Text-prompted object detection
+# GroundingDINO dependencies (install BEFORE GroundingDINO)
 transformers>=4.30.0  # Required for GroundingDINO text encoding
 supervision>=0.16.0   # Required for GroundingDINO post-processing
+addict>=2.4.0         # Required by GroundingDINO
+yapf>=0.40.0          # Required by GroundingDINO
+
+# GroundingDINO - Open-vocabulary object detection with text prompts
+git+https://github.com/IDEA-Research/GroundingDINO.git  # Text-prompted object detection
 
 # API dependencies
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
+
+# Claude API for intelligent agents (optional - agents fallback to defaults if not installed)
+anthropic>=0.40.0
 
 # Visualization (folium maps, matplotlib)
 folium>=0.14.0
