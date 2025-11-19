@@ -32,8 +32,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Parcel AI Property Detection API",
     description=(
-        "Detect vehicles, pools, amenities, trees, fences, "
-        "and custom objects in satellite imagery"
+        "Detect vehicles, pools, amenities, trees, fences, SAM segments, "
+        "and custom objects (driveways, patios, sheds, etc.) via Grounded-SAM "
+        "in satellite imagery"
     ),
     version="0.1.0",
 )
@@ -409,15 +410,28 @@ async def detect_property(
     detect_fences: bool = Form(
         False, description="Include fence detection (default: False)"
     ),
-    regrid_parcel_polygon: str = Form(
-        ...,
+    include_grounded_sam: bool = Form(
+        False, description="Include Grounded-SAM detection (default: False)"
+    ),
+    grounded_sam_prompts: str = Form(
+        "driveway, patio, deck, shed, gazebo, pergola, hot tub, fire pit, "
+        "pool house, dog house, playground equipment, trampoline, basketball hoop, "
+        "above ground pool, boat, RV, trailer, carport, greenhouse, chicken coop",
         description=(
-            "Required Regrid parcel polygon as JSON string "
-            "(coordinates array in WGS84 format)"
+            "Comma-separated text prompts for Grounded-SAM detection "
+            "(default: comprehensive residential property features)"
+        ),
+    ),
+    regrid_parcel_polygon: Optional[str] = Form(
+        None,
+        description=(
+            "Regrid parcel polygon as JSON string "
+            "(coordinates array in WGS84 format). Required only for fence detection."
         ),
     ),
     detector: PropertyDetectionService = Depends(get_detector),
     sam_service: SAMSegmentationService = Depends(get_sam_service),
+    grounded_sam_detector: GroundedSAMDetector = Depends(get_grounded_sam_detector),
 ):
     """Detect all property features in satellite image.
 
@@ -431,9 +445,12 @@ async def detect_property(
         sam_points_per_side: SAM grid sampling density (default: 32)
         label_sam_segments: Label SAM segments with semantic labels (default: True)
         detect_fences: Include fence detection (default: False)
+        include_grounded_sam: Include Grounded-SAM detection (default: False)
+        grounded_sam_prompts: Text prompts for Grounded-SAM detection
         regrid_parcel_polygon: Required Regrid parcel polygon as JSON string
         detector: Injected PropertyDetectionService (for testing)
         sam_service: Injected SAMSegmentationService (for testing)
+        grounded_sam_detector: Injected GroundedSAMDetector (for testing)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
@@ -441,7 +458,7 @@ async def detect_property(
     logger.info(
         f"Processing detection request: lat={center_lat}, lon={center_lon}, "
         f"zoom={zoom_level}, format={format}, include_sam={include_sam}, "
-        f"detect_fences={detect_fences}"
+        f"detect_fences={detect_fences}, include_grounded_sam={include_grounded_sam}"
     )
 
     # Validate inputs (Clean Architecture - Input Validation Layer)
@@ -453,7 +470,12 @@ async def detect_property(
         validate_sam_points_per_side(sam_points_per_side)
 
     # Parse Regrid parcel polygon (Business Logic Layer)
-    # Always required now - parse it regardless of fence detection
+    # Only required for fence detection
+    if detect_fences and not regrid_parcel_polygon:
+        raise HTTPException(
+            status_code=400,
+            detail="regrid_parcel_polygon is required when detect_fences=true",
+        )
     parcel_polygon = parse_regrid_parcel_polygon(regrid_parcel_polygon)
 
     # File handling (I/O Layer)
@@ -559,8 +581,49 @@ async def detect_property(
                             f"Added {num_buildings} OSM buildings to " f"GeoJSON output"
                         )
 
-            # Add regrid parcel polygon to GeoJSON output (always included now)
-            add_regrid_parcel_to_geojson(geojson, parcel_polygon)
+            # Add Grounded-SAM detections if requested
+            if include_grounded_sam:
+                logger.info("Running Grounded-SAM detection...")
+                logger.info(f"Prompts: {grounded_sam_prompts}")
+
+                # Parse prompts from comma-separated string
+                prompt_list = [p.strip() for p in grounded_sam_prompts.split(",")]
+
+                # Run Grounded-SAM detection
+                from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+                from PIL import Image as PILImage
+
+                # Create coordinate converter
+                with PILImage.open(image_path) as img:
+                    img_width, img_height = img.size
+
+                converter = ImageCoordinateConverter(
+                    center_lat=center_lat,
+                    center_lon=center_lon,
+                    image_width_px=img_width,
+                    image_height_px=img_height,
+                    zoom_level=zoom_level,
+                )
+
+                # Run detection
+                grounded_detections = grounded_sam_detector.detect(
+                    image=image_path,
+                    prompts=prompt_list,
+                    coordinate_converter=converter,
+                )
+
+                # Add to GeoJSON
+                grounded_features = [det.to_geojson_feature() for det in grounded_detections]
+                geojson["features"].extend(grounded_features)
+
+                logger.info(
+                    f"Grounded-SAM detection complete: "
+                    f"{len(grounded_detections)} objects detected"
+                )
+
+            # Add regrid parcel polygon to GeoJSON output if provided
+            if parcel_polygon is not None:
+                add_regrid_parcel_to_geojson(geojson, parcel_polygon)
 
             logger.info(
                 f"Detection complete: {len(geojson['features'])} total features"
