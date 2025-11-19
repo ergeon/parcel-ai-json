@@ -1,0 +1,58 @@
+# Production Docker Compose configuration for parcel-ai-json
+# Optimized for AWS EC2 GPU instances (g5.xlarge, g4dn.xlarge, etc.)
+#
+# Usage:
+#   docker-compose -f docker/docker-compose.prod.yml up -d
+#   docker-compose -f docker/docker-compose.prod.yml logs -f
+#   docker-compose -f docker/docker-compose.prod.yml down
+
+version: '3.8'
+
+services:
+  parcel-ai-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: parcel-ai-json:latest
+    container_name: parcel-ai-json
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WORKERS=4  # Uvicorn workers
+      # GPU environment variables
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    # Enable GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Persist model caches across container restarts
+      - model-cache:/root/.cache
+      - ultralytics-cache:/root/.ultralytics
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+volumes:
+  # Persistent volumes for model caching
+  model-cache:
+    driver: local
+  ultralytics-cache:
+    driver: local

@@ -1,10 +1,9 @@
-"""Generate folium map for a single address using Docker REST API.
+"""Generate folium map for a single address using REST API.
 
-IMPORTANT: This script uses the Docker REST API (http://localhost:8000)
-Make sure the Docker container is running first:
-    docker-compose up -d
-    # or
-    make docker-run
+IMPORTANT: This script uses the REST API (defaults to EC2: http://44.254.121.125:8000)
+You can override with environment variable:
+    export API_BASE_URL="http://localhost:8000"  # For local Docker
+    export API_BASE_URL="http://44.254.121.125:8000"  # For EC2 (default)
 """
 
 import json
@@ -22,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 # Configuration
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://44.254.121.125:8000")  # Use EC2 instance
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 

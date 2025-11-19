@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples generate-examples-10 generate-examples-20 docker-build docker-build-clean docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down
+.PHONY: help test test-verbose coverage coverage-html clean install lint format check build deploy tag install-ci generate-examples generate-examples-10 generate-examples-20 docker-build docker-build-clean docker-run docker-stop docker-logs docker-shell docker-push docker-clean docker-up docker-down deploy-ec2 deploy-ec2-default ec2-logs ec2-ssh
 
 # Default target
 .DEFAULT_GOAL := help
@@ -197,3 +197,33 @@ docker-down: ## Stop Docker Compose services
 docker-restart: docker-stop docker-run ## Restart Docker container
 
 docker-rebuild: docker-stop docker-build docker-run ## Rebuild and restart Docker container
+
+# EC2 Deployment targets
+
+deploy-ec2: ## Deploy to EC2 instance (usage: make deploy-ec2 EC2_IP=44.254.121.125)
+	@if [ -z "$(EC2_IP)" ]; then \
+		echo "Error: EC2_IP not set. Usage:"; \
+		echo "  make deploy-ec2 EC2_IP=44.254.121.125"; \
+		exit 1; \
+	fi
+	@echo "Deploying to EC2 instance $(EC2_IP)..."
+	./scripts/deploy_to_ec2.sh $(EC2_IP)
+
+deploy-ec2-default: ## Deploy to default EC2 instance (44.254.121.125)
+	./scripts/deploy_to_ec2.sh 44.254.121.125
+
+ec2-logs: ## View logs from EC2 deployment (usage: make ec2-logs EC2_IP=44.254.121.125)
+	@if [ -z "$(EC2_IP)" ]; then \
+		echo "Error: EC2_IP not set. Usage:"; \
+		echo "  make ec2-logs EC2_IP=44.254.121.125"; \
+		exit 1; \
+	fi
+	ssh -i ~/.ssh/ai-gpu-instance-key.pem ubuntu@$(EC2_IP) 'docker logs -f parcel-ai-json'
+
+ec2-ssh: ## SSH into EC2 instance (usage: make ec2-ssh EC2_IP=44.254.121.125)
+	@if [ -z "$(EC2_IP)" ]; then \
+		echo "Error: EC2_IP not set. Usage:"; \
+		echo "  make ec2-ssh EC2_IP=44.254.121.125"; \
+		exit 1; \
+	fi
+	ssh -i ~/.ssh/ai-gpu-instance-key.pem ubuntu@$(EC2_IP)
