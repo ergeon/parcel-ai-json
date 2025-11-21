@@ -1,11 +1,15 @@
 # Docker Compose configuration for parcel-ai-json
-# Runs unified property detection service with YOLO, DeepForest, and detectree
+# Runs unified property detection service with YOLO, DeepForest, detectree, SAM, and SAM3
 #
 # Usage:
+#   # Set HF_TOKEN in .env file first (required for SAM3)
 #   docker-compose up -d          # Start service in background
 #   docker-compose logs -f        # View logs
 #   docker-compose down           # Stop service
 #   docker-compose build          # Rebuild image
+#
+# Note: Create a .env file in the same directory with:
+#   HF_TOKEN=your_huggingface_token_here
 
 version: '3.8'
 
@@ -14,6 +18,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        - HF_TOKEN=${HF_TOKEN}  # Pass HF_TOKEN from .env to build
     image: parcel-ai-json:latest
     container_name: parcel-ai-json
     ports:
@@ -21,10 +27,14 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - WORKERS=4  # Number of Uvicorn workers
+      - HF_TOKEN=${HF_TOKEN}  # Required for SAM3 model access
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+      - PYTORCH_ENABLE_MPS_FALLBACK=1  # macOS compatibility
     volumes:
       # Mount model cache to persist downloads across container restarts
       - model-cache:/root/.cache
       - ultralytics-cache:/root/.ultralytics
+      - huggingface-cache:/root/.cache/huggingface  # SAM3 model cache
       # Optional: Mount local data directory for testing
       # - ./data:/app/data:ro
     restart: unless-stopped
@@ -50,3 +60,5 @@ volumes:
     driver: local
   ultralytics-cache:
     driver: local
+  huggingface-cache:
+    driver: local  # Caches SAM3 model (~3.44GB)

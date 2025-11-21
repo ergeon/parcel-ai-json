@@ -268,7 +268,8 @@ parcel_ai_json/
 ├── swimming_pool_detector.py # YOLOv8-OBB for pools
 ├── amenity_detector.py      # YOLOv8-OBB for amenities
 ├── tree_detector.py         # DeepForest + detectree
-├── sam_segmentation.py      # SAM for general segmentation
+├── sam_segmentation.py      # SAM for general segmentation (original)
+├── sam3_segmentation.py     # SAM3 for open-vocabulary segmentation
 ├── coordinate_converter.py  # Pixel ↔ WGS84 (uses pyproj)
 ├── device_utils.py          # Auto GPU detection
 └── api.py                   # FastAPI REST endpoints
@@ -329,7 +330,7 @@ Models automatically use detected device. See `GPU_SUPPORT.md` for details.
 
 ### FastAPI Service
 
-The `api.py` module provides 6 REST endpoints:
+The `api.py` module provides REST endpoints:
 - `GET /` - Health check
 - `GET /health` - Detailed status
 - `POST /detect` - Unified detection (all features)
@@ -337,8 +338,87 @@ The `api.py` module provides 6 REST endpoints:
 - `POST /detect/pools` - Pools only
 - `POST /detect/amenities` - Amenities only
 - `POST /detect/trees` - Trees only
+- `POST /detect/fences` - Fence detection
+- `POST /detect/grounded-sam` - Text-prompted detection (GroundingDINO + SAM)
+- `POST /segment/sam` - SAM segmentation (original)
+- `POST /segment/sam3` - SAM3 open-vocabulary segmentation
 
 Service runs on port 8000. API docs at `/docs`.
+
+### SAM3 Open-Vocabulary Segmentation
+
+**SAM3** (Segment Anything Model 3) is Meta's 848M parameter vision foundation model for open-vocabulary object detection and segmentation. Unlike the original SAM which requires point/box prompts, SAM3 uses natural language text prompts.
+
+**Key Features:**
+- **Open-vocabulary detection**: Use any text prompt (e.g., "houses", "cars", "trees", "swimming pool")
+- **Instance segmentation**: Pixel-level masks for each detected object
+- **Aerial/satellite imagery optimized**: Better performance on overhead views
+- **Multi-class detection**: Detect multiple object classes in a single model
+
+**Performance (tested on Apple M3 Max CPU):**
+- Model loading: ~11-12 seconds (one-time)
+- Per-class detection: ~18-23 seconds (CPU), ~4-8 seconds (expected on GPU)
+- Image resolution: 1008x1008 (automatically resized)
+
+**Authentication Required:**
+- SAM3 is a gated model requiring HuggingFace authentication
+- Set `HF_TOKEN` environment variable (in `.env` file)
+- Accept model terms at: https://huggingface.co/facebook/sam3
+- Get token from: https://huggingface.co/settings/tokens
+
+**Usage Example (API):**
+```bash
+curl -X POST "http://localhost:8000/segment/sam3" \
+     -F "image=@image.jpg" \
+     -F "center_lat=37.7749" \
+     -F "center_lon=-122.4194" \
+     -F "zoom_level=20" \
+     -F "prompts=houses,cars,trees,swimming pool" \
+     -F "confidence_threshold=0.3"
+```
+
+**Usage Example (Python):**
+```python
+from parcel_ai_json import SAM3SegmentationService
+
+# Initialize (requires HF_TOKEN in environment)
+service = SAM3SegmentationService(confidence_threshold=0.3)
+
+# Run detection
+satellite_image = {
+    "path": "image.jpg",
+    "center_lat": 37.7749,
+    "center_lon": -122.4194,
+    "zoom_level": 20
+}
+
+results = service.segment_image(
+    satellite_image,
+    prompts=["houses", "cars", "trees", "swimming pool"]
+)
+
+# Results organized by class
+for class_name, detections in results.items():
+    print(f"{class_name}: {len(detections)} detected")
+    for det in detections:
+        print(f"  - Confidence: {det.confidence:.2f}, Area: {det.area_sqm:.1f}m²")
+```
+
+**Common Prompts for Aerial Imagery:**
+- Properties: `houses`, `buildings`, `roof`, `garage`, `shed`, `driveway`
+- Landscape: `trees`, `grass`, `lawn`, `garden`, `bushes`
+- Amenities: `swimming pool`, `fence`, `patio`, `deck`, `solar panels`
+- Infrastructure: `road`, `street`, `power lines`, `vehicles`, `cars`
+
+**SAM3 vs Original SAM:**
+| Feature | SAM (original) | SAM3 |
+|---------|---------------|------|
+| Prompt Type | Points/boxes | Natural language text |
+| Use Case | General segmentation | Class-specific detection |
+| Performance (CPU) | ~25-35s | ~18-23s per class |
+| Aerial Imagery | Good | Better optimized |
+| Model Size | 636M (vit_h) | 848M |
+| Authentication | Not required | HuggingFace token required |
 
 ## Testing Standards (ZERO TOLERANCE)
 
@@ -420,26 +500,46 @@ See `output/test_datasets/README.md` and README.md "Testing & Scripts" section f
 
 ## Model Management
 
-### Auto-Downloaded Models
-- **YOLOv8-OBB**: `yolov8m-obb.pt` (51MB) → `~/.ultralytics/`
-- **DeepForest**: `weecology/deepforest-tree` → `~/.cache/torch/`
+### Auto-Downloaded Models (Lightweight)
+- **DeepForest**: `weecology/deepforest-tree` (~97MB) → `~/.cache/torch/`
+- **detectree**: Classifier data (~50MB) → auto-downloads
 
-### Pre-Bundled in Docker
-- **SAM**: `sam_vit_h_4b8939.pth` (2.4GB) → `/app/models/`
-- **YOLO**: Pre-downloaded to `/root/.ultralytics/`
+### Pre-Bundled in Docker (All Large Models)
+- **YOLO**: `yolov8*.pt` (~100MB) → `/root/.ultralytics/`
+- **SAM (original)**: `sam_vit_h_4b8939.pth` (2.4GB) → `/app/models/`
+- **GroundingDINO**: `groundingdino_swinb_cogcoor.pth` (~660MB) → `/app/models/`
+- **SAM3**: `models--facebook--sam3` (9.6GB) → `/root/.cache/huggingface/hub/`
 
 ### Model Locations
 ```bash
 # Local development
 ~/.ultralytics/yolov8m-obb.pt
 ~/.cache/torch/hub/weecology_deepforest-tree/
+~/.cache/huggingface/hub/models--facebook--sam3/
 
-# Docker container
-/root/.ultralytics/yolov8m-obb.pt
+# Docker container (all pre-bundled)
+/root/.ultralytics/yolov8*.pt
 /app/models/sam_vit_h_4b8939.pth
+/app/models/groundingdino_swinb_cogcoor.pth
+/root/.cache/huggingface/hub/models--facebook--sam3/
 ```
 
-Models auto-download on first use if not present.
+### SAM3 Model Pre-Download for Docker
+
+Before building Docker, ensure SAM3 model is downloaded:
+
+```bash
+# Option 1: Use the download script
+./scripts/download_sam3_model.sh
+
+# Option 2: Manual download
+python -c "from sam3.model_builder import build_sam3_image_model; build_sam3_image_model()"
+cp -r ~/.cache/huggingface/hub/models--facebook--sam3 models/huggingface_cache/hub/
+```
+
+The Dockerfile copies this to `/root/.cache/huggingface/` for instant startup (no runtime download).
+
+See `SAM3_DOCKER_SETUP.md` for complete details.
 
 ## Common Development Workflows
 

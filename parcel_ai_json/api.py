@@ -21,6 +21,7 @@ import json
 from parcel_ai_json.property_detector import PropertyDetectionService
 from parcel_ai_json.device_utils import get_best_device
 from parcel_ai_json.sam_segmentation import SAMSegmentationService
+from parcel_ai_json.sam3_segmentation import SAM3SegmentationService
 from parcel_ai_json.sam_labeler import SAMSegmentLabeler
 from parcel_ai_json.grounded_sam_detector import GroundedSAMDetector
 
@@ -33,6 +34,7 @@ app = FastAPI(
     title="Parcel AI Property Detection API",
     description=(
         "Detect vehicles, pools, amenities, trees, fences, SAM segments, "
+        "SAM3 open-vocabulary detections (houses, cars, roofs, etc.), "
         "and custom objects (driveways, patios, sheds, etc.) via Grounded-SAM "
         "in satellite imagery"
     ),
@@ -42,6 +44,7 @@ app = FastAPI(
 # Initialize detection service (lazy-loaded on first request)
 _detector = None
 _sam_service = None
+_sam3_service = None
 _grounded_sam_detector = None
 
 
@@ -128,6 +131,26 @@ def get_grounded_sam_detector() -> GroundedSAMDetector:
 
         logger.info(f"GroundedSAMDetector initialized on {device}")
     return _grounded_sam_detector
+
+
+def get_sam3_service() -> SAM3SegmentationService:
+    """Get or create the SAM3SegmentationService singleton.
+
+    This acts as a dependency provider for FastAPI's dependency injection.
+    Can be overridden in tests using app.dependency_overrides.
+    """
+    global _sam3_service
+    if _sam3_service is None:
+        device = get_best_device()
+        logger.info(f"Initializing SAM3SegmentationService (device: {device})...")
+
+        _sam3_service = SAM3SegmentationService(
+            device=device,
+            confidence_threshold=0.3,
+        )
+
+        logger.info(f"SAM3SegmentationService initialized on {device}")
+    return _sam3_service
 
 
 # ============================================================================
@@ -1058,6 +1081,114 @@ async def segment_sam(
         logger.error(f"SAM segmentation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"SAM segmentation failed: {str(e)}"
+        )
+
+    finally:
+        # Clean up temporary files
+        cleanup_temp_dir(temp_dir)
+
+
+@app.post("/segment/sam3")
+async def segment_sam3(
+    image: UploadFile = File(..., description="Satellite image file (JPEG/PNG)"),
+    center_lat: float = Form(..., description="Image center latitude (WGS84)"),
+    center_lon: float = Form(..., description="Image center longitude (WGS84)"),
+    zoom_level: int = Form(20, description="Zoom level (default: 20)"),
+    prompts: str = Form(
+        ...,
+        description="Comma-separated text prompts (e.g., 'houses,cars,trees,swimming pool')",
+    ),
+    confidence_threshold: float = Form(
+        0.3, description="Minimum confidence threshold (0-1, default: 0.3)"
+    ),
+    sam3_service: SAM3SegmentationService = Depends(get_sam3_service),
+):
+    """Run SAM3 open-vocabulary segmentation on satellite image.
+
+    SAM3 uses natural language prompts to detect and segment specific objects.
+    Unlike the original SAM, SAM3 can detect specific object classes using text prompts.
+
+    Args:
+        image: Satellite image file (JPEG or PNG)
+        center_lat: Center latitude of image (WGS84)
+        center_lon: Center longitude of image (WGS84)
+        zoom_level: Zoom level (default: 20)
+        prompts: Comma-separated text prompts (e.g., "houses,cars,trees,swimming pool")
+        confidence_threshold: Minimum confidence threshold (0-1, default: 0.3)
+        sam3_service: Injected SAM3SegmentationService (for testing)
+
+    Returns:
+        GeoJSON with SAM3 detections, grouped by class
+
+    Example:
+        curl -X POST "http://localhost:8000/segment/sam3" \\
+             -F "image=@image.jpg" \\
+             -F "center_lat=37.7749" \\
+             -F "center_lon=-122.4194" \\
+             -F "zoom_level=20" \\
+             -F "prompts=houses,cars,trees,swimming pool" \\
+             -F "confidence_threshold=0.3"
+    """
+    logger.info(
+        f"Processing SAM3 segmentation: lat={center_lat}, lon={center_lon}, "
+        f"zoom={zoom_level}, prompts='{prompts}', confidence={confidence_threshold}"
+    )
+
+    # Validate inputs
+    validate_image_content_type(image.content_type)
+    validate_coordinates(center_lat, center_lon)
+    validate_zoom_level(zoom_level)
+
+    # Parse prompts
+    prompt_list = [p.strip() for p in prompts.split(",") if p.strip()]
+    if not prompt_list:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one prompt is required (e.g., 'houses,cars')",
+        )
+
+    # Validate confidence threshold
+    if not 0 <= confidence_threshold <= 1:
+        raise HTTPException(
+            status_code=400, detail="confidence_threshold must be between 0 and 1"
+        )
+
+    # Save uploaded file to temporary location
+    temp_dir = None
+    try:
+        temp_dir, image_path = save_uploaded_file(image)
+
+        logger.info(f"Saved uploaded image to {image_path}")
+
+        # Prepare satellite image metadata
+        satellite_image = create_satellite_image_metadata(
+            image_path, center_lat, center_lon, zoom_level
+        )
+
+        # Update confidence threshold if different from default
+        if confidence_threshold != sam3_service.confidence_threshold:
+            logger.info(f"Updating SAM3 confidence threshold to {confidence_threshold}")
+            sam3_service.confidence_threshold = confidence_threshold
+
+        # Run SAM3 segmentation
+        results = sam3_service.segment_image(satellite_image, prompt_list)
+
+        # Convert to GeoJSON
+        geojson = sam3_service.segment_image_geojson(satellite_image, prompt_list)
+
+        # Add summary statistics
+        total_detections = sum(len(dets) for dets in results.values())
+        logger.info(
+            f"SAM3 segmentation complete: {total_detections} total detections across "
+            f"{len(prompt_list)} classes"
+        )
+
+        return JSONResponse(content=geojson)
+
+    except Exception as e:
+        logger.error(f"SAM3 segmentation failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"SAM3 segmentation failed: {str(e)}"
         )
 
     finally:

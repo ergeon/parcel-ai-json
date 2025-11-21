@@ -13,9 +13,21 @@ pyproj>=3.0.0           # Geodesic coordinate transformations
 deepforest>=2.0.0
 detectree==0.8.0      # Tree coverage detection (pixel-level classification)
 
-# SAM - Segment Anything Model for general-purpose segmentation
+# SAM - Segment Anything Model for general-purpose segmentation (original)
 git+https://github.com/facebookresearch/segment-anything.git  # Zero-shot segmentation
 opencv-python>=4.8.0  # Required for SAM polygon extraction from masks
+
+# SAM3 - Segment Anything Model 3 for open-vocabulary segmentation
+# Install SAM3 from local models directory: pip install -e models/sam3
+# SAM3 dependencies (required for SAM3 to work):
+timm>=1.0.17          # Vision transformer models for SAM3
+ftfy==6.1.1           # Text encoding fixes for SAM3
+regex                 # Text processing for SAM3
+iopath>=0.1.10        # File I/O utilities
+typing_extensions     # Type hints for older Python versions
+huggingface_hub>=0.20.0  # HuggingFace model hub (for SAM3 model download)
+einops>=0.8.0         # Tensor operations for SAM3
+python-dotenv>=1.0.0  # Environment variable management
 
 # GroundingDINO dependencies (install BEFORE GroundingDINO)
 transformers>=4.30.0  # Required for GroundingDINO text encoding

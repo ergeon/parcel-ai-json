@@ -59,3 +59,5 @@ models/*.pth
 # Deployment credentials
 pypirc.conf
 .env
+# HuggingFace model cache (large files - download separately or use Git LFS)
+models/huggingface_cache/
