@@ -261,6 +261,10 @@ class GroundedSAMDetector:
             device=self.device,
         )
 
+        # Return empty list if no detections
+        if boxes.size(0) == 0:
+            return []
+
         # Convert to xyxy format
         h, w = image_np.shape[:2]
         boxes_xyxy = self._box_cxcywh_to_xyxy(boxes) * torch.Tensor([w, h, w, h])

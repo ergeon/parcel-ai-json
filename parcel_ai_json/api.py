@@ -636,7 +636,9 @@ async def detect_property(
                 )
 
                 # Add to GeoJSON
-                grounded_features = [det.to_geojson_feature() for det in grounded_detections]
+                grounded_features = [
+                    det.to_geojson_feature() for det in grounded_detections
+                ]
                 geojson["features"].extend(grounded_features)
 
                 logger.info(
@@ -1096,7 +1098,10 @@ async def segment_sam3(
     zoom_level: int = Form(20, description="Zoom level (default: 20)"),
     prompts: str = Form(
         ...,
-        description="Comma-separated text prompts (e.g., 'houses,cars,trees,swimming pool')",
+        description=(
+            "Comma-separated text prompts "
+            "(e.g., 'houses,cars,trees,swimming pool')"
+        ),
     ),
     confidence_threshold: float = Form(
         0.3, description="Minimum confidence threshold (0-1, default: 0.3)"

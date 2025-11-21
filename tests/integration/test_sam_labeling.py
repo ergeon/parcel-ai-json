@@ -20,7 +20,7 @@ def test_sam_labeling():
     """Test SAM segment labeling on an existing satellite image."""
 
     # Find a sample satellite image from examples
-    examples_dir = Path("output/examples/images")
+    examples_dir = Path("output/examples/images").resolve()
     if not examples_dir.exists():
         print(f"ERROR: Examples directory not found: {examples_dir}")
         print("Please run generate_examples.py first to create sample images.")
@@ -50,9 +50,9 @@ def test_sam_labeling():
     detections_result = property_detector.detect_all(satellite_image)
 
     print(f"✓ Detected {len(detections_result.vehicles)} vehicles")
-    print(f"✓ Detected {len(detections_result.pools)} pools")
+    print(f"✓ Detected {len(detections_result.swimming_pools)} pools")
     print(f"✓ Detected {len(detections_result.amenities)} amenities")
-    tree_poly_count = len(detections_result.tree_polygons or [])
+    tree_poly_count = len(detections_result.trees.tree_polygons or [])
     print(f"✓ Detected {tree_poly_count} tree polygons")
 
     # Step 2: Run SAM segmentation

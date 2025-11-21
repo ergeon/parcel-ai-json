@@ -123,7 +123,9 @@ class SAM3SegmentationService:
         os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
         # Check for HuggingFace token
-        if not os.environ.get('HF_TOKEN') and not os.environ.get('HUGGING_FACE_HUB_TOKEN'):
+        has_hf_token = os.environ.get('HF_TOKEN')
+        has_hf_hub_token = os.environ.get('HUGGING_FACE_HUB_TOKEN')
+        if not has_hf_token and not has_hf_hub_token:
             raise ValueError(
                 "HuggingFace token required for SAM3. "
                 "Set HF_TOKEN or HUGGING_FACE_HUB_TOKEN environment variable. "
@@ -160,7 +162,10 @@ class SAM3SegmentationService:
                 self._device = "cuda"
             elif torch.backends.mps.is_available():
                 # Note: SAM3 may have issues with MPS, default to CPU
-                print("Warning: MPS (Apple Silicon GPU) may have compatibility issues with SAM3")
+                print(
+                    "Warning: MPS (Apple Silicon GPU) may have "
+                    "compatibility issues with SAM3"
+                )
                 print("Defaulting to CPU. To force MPS, set device='mps' explicitly.")
                 self._device = "cpu"
             else:

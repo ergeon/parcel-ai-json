@@ -3,7 +3,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -114,18 +114,18 @@ class PromptEngineeringAgent:
             # Call Claude API
             logger.info(f"Calling Claude API for prompt generation: {context_desc}")
 
-            import anthropic
-
             message = self.client.messages.create(
                 model="claude-3-opus-20240229",
                 max_tokens=2000,
                 messages=[
                     {
                         "role": "user",
-                        "content": f"""You are an expert in property analysis from satellite imagery.
+                        "content": f"""You are an expert in property analysis \
+from satellite imagery.
 
-Your task: Generate the most relevant {max_prompts} detection prompts for Grounded-SAM
-(a text-prompted object detection model) based on property context.
+Your task: Generate the most relevant {max_prompts} detection prompts \
+for Grounded-SAM (a text-prompted object detection model) based on \
+property context.
 
 Property Context:
 {context_desc}

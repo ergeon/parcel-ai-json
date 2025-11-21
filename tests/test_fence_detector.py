@@ -710,9 +710,8 @@ class TestFenceDetectionService(unittest.TestCase):
                 result = service._extract_fence_polygons(
                     binary_mask, 37.7749, -122.4194, 20
                 )
-                # Should return empty list when cv2/scipy not available
-                # (not a tuple - just an empty list)
-                self.assertEqual(result, [])
+                # Should return empty tuple when cv2/scipy not available
+                self.assertEqual(result, ([], []))
         finally:
             # Restore modules
             if original_cv2 is not None:

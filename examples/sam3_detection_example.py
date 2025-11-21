@@ -149,7 +149,9 @@ def main():
 
     # Run detection
     print("\nRunning SAM3 detection...")
-    print(f"⏱️  Expected time: ~{len(prompts) * 20}s on CPU, ~{len(prompts) * 6}s on GPU")
+    cpu_time = len(prompts) * 20
+    gpu_time = len(prompts) * 6
+    print(f"⏱️  Expected time: ~{cpu_time}s on CPU, ~{gpu_time}s on GPU")
 
     results = service.segment_image(satellite_image, prompts)
 

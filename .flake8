@@ -10,4 +10,5 @@ exclude =
     .venv,
     *.egg-info,
     setup.py,
-    tests/
+    tests/,
+    models/sam3/
