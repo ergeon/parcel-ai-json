@@ -29,6 +29,9 @@ def mock_sam3_model():
         # Mock model
         mock_model = Mock()
         mock_model.to = Mock(return_value=mock_model)
+        mock_model.eval = Mock(return_value=None)
+        # Mock buffers() to return empty list (simulates no buffers need transfer)
+        mock_model.buffers = Mock(return_value=iter([]))
         mock_build.return_value = mock_model
 
         # Mock processor
