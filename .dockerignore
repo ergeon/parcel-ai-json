@@ -47,6 +47,8 @@ folium_maps/
 
 # IMPORTANT: We want to INCLUDE the models/ directory in Docker builds
 # DO NOT add models/ or *.pt here - models are copied into container
+# TEMPORARY: Exclude SAM3 HuggingFace cache (9.6GB) - will auto-download on first use
+models/huggingface_cache/
 
 # Temporary files
 *.log

@@ -28,6 +28,7 @@ typing_extensions     # Type hints for older Python versions
 huggingface_hub>=0.20.0  # HuggingFace model hub (for SAM3 model download)
 einops>=0.8.0         # Tensor operations for SAM3
 python-dotenv>=1.0.0  # Environment variable management
+triton                # GPU kernel acceleration for SAM3
 
 # GroundingDINO dependencies (install BEFORE GroundingDINO)
 transformers>=4.30.0  # Required for GroundingDINO text encoding

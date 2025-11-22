@@ -106,7 +106,8 @@ RUN if [ -f "/app/models/sam3/assets/bpe_simple_vocab_16e6.txt.gz" ]; then \
 
 # Copy pre-downloaded SAM3 model to HuggingFace cache directory
 # This avoids downloading ~6.4GB on first run (just like SAM, YOLO, etc.)
-COPY models/huggingface_cache/ /root/.cache/huggingface/
+# TEMPORARY: Commented out to speed up Docker build - SAM3 will auto-download on first use
+# COPY models/huggingface_cache/ /root/.cache/huggingface/
 
 # Verify SAM3 model is available
 RUN if [ -d "/root/.cache/huggingface/hub/models--facebook--sam3" ]; then \
