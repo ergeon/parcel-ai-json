@@ -177,6 +177,11 @@ class SAM3SegmentationService:
         # Load model
         self._model = build_sam3_image_model()
         self._model = self._model.to(self._device)
+        self._model.eval()  # Set to evaluation mode
+
+        # Ensure all model buffers are on the correct device
+        for buffer in self._model.buffers():
+            buffer.data = buffer.data.to(self._device)
 
         # Create processor
         self._processor = Sam3Processor(
