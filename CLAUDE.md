@@ -455,6 +455,50 @@ def test_detect_vehicles(mock_yolo):
     # ... test logic
 ```
 
+### Test Complexity Guidelines
+**CRITICAL**: Tests should be simple, fast, and self-contained. Avoid complex pipeline setups that make tests brittle or environment-dependent.
+
+**Rules:**
+1. **NO Docker dependencies in tests** - Tests must run without external services
+   - Use mocking for services that would normally run in Docker
+   - Integration tests requiring Docker belong in CI/CD pipelines, not unit tests
+   - If a test requires Docker to pass, it's not a unit test
+
+2. **NO external service dependencies** - Tests must run offline
+   - Mock external APIs, databases, and services
+   - Use in-memory databases for persistence tests
+   - Never assume network connectivity
+
+3. **Fast execution** - Full test suite should complete in under 2 minutes
+   - Mock heavy ML models (YOLO, SAM, etc.) in unit tests
+   - Use small test fixtures (100x100px images, not full-size)
+   - Save integration tests for CI/CD
+
+4. **Self-contained** - Each test should set up and tear down its own state
+   - No shared state between tests
+   - No assumptions about execution order
+   - Clean up any files/resources created
+
+**Examples:**
+```python
+# ❌ BAD - Requires Docker to be running
+def test_tree_detection_with_detectree():
+    result = tree_detector.detect(image)  # Calls detectree in Docker
+    assert len(result) > 0
+
+# ✅ GOOD - Mocks the Docker-dependent service
+@patch('parcel_ai_json.tree_detector.DetectreeService')
+def test_tree_detection_with_detectree(mock_service):
+    mock_service.return_value.detect.return_value = [...]
+    result = tree_detector.detect(image)
+    assert len(result) > 0
+```
+
+**When complex pipelines ARE acceptable:**
+- End-to-end integration tests in CI/CD (separate from unit tests)
+- Performance benchmarking (clearly labeled, run manually)
+- Deployment verification scripts (not part of test suite)
+
 ### Test Datasets
 
 The project includes 100 real-world test properties for validation:
