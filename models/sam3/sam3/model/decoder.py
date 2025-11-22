@@ -359,8 +359,14 @@ class TransformerDecoder(nn.Module):
             assert coords_h.shape == (H,)
             assert coords_w.shape == (W,)
 
+        # Ensure coords are on the same device as reference_boxes (GPU fix for CUDA inference)
+        # Cached coords might be on CPU from previous runs
+        target_device = reference_boxes.device
+        coords_h = coords_h.to(target_device)
+        coords_w = coords_w.to(target_device)
+
         # Ensure boxes are on the same device as coords (GPU fix for CUDA inference)
-        boxes_xyxy = boxes_xyxy.to(coords_h.device)
+        boxes_xyxy = boxes_xyxy.to(target_device)
 
         deltas_y = coords_h.view(1, -1, 1) - boxes_xyxy.reshape(-1, 1, 4)[:, :, 1:4:2]
         deltas_y = deltas_y.view(bs, num_queries, -1, 2)
