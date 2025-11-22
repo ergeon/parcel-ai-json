@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 # Configuration
-API_BASE_URL = os.environ.get("API_BASE_URL", "http://44.254.121.125:8000")  # Use EC2 instance
+# Use EC2 instance
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://44.254.121.125:8000")
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 

@@ -150,8 +150,11 @@ def create_grounded_sam_folium_map(
 
         # Create feature group for this label if not exists
         if label not in label_groups:
+            count = sum(
+                1 for f in features if f['properties'].get('label') == label
+            )
             label_groups[label] = folium.FeatureGroup(
-                name=f"{label.title()} ({sum(1 for f in features if f['properties'].get('label') == label)})",
+                name=f"{label.title()} ({count})",
                 show=True
             )
 
@@ -189,7 +192,8 @@ def create_grounded_sam_folium_map(
     for label in sorted(label_groups.keys()):
         color = get_label_color(label)
         legend_items.append(
-            f'<p style="margin:5px 0;"><span style="color:{color};">●</span> {label.title()}</p>'
+            f'<p style="margin:5px 0;">'
+            f'<span style="color:{color};">●</span> {label.title()}</p>'
         )
 
     legend_html = f"""
@@ -197,7 +201,9 @@ def create_grounded_sam_folium_map(
                 bottom: 50px; right: 50px; width: 250px; height: auto;
                 background-color: white; z-index:9999; font-size:14px;
                 border:2px solid grey; border-radius: 5px; padding: 10px">
-    <p style="margin:0; font-weight: bold; text-align: center;">Grounded-SAM Detections</p>
+    <p style="margin:0; font-weight: bold; text-align: center;">
+        Grounded-SAM Detections
+    </p>
     {''.join(legend_items)}
     </div>
     """
@@ -221,7 +227,7 @@ def create_grounded_sam_folium_map(
     m.save(str(output_path))
 
     print(f"\n✓ Grounded-SAM Folium map saved to: {output_path}")
-    print(f"\nDetection Summary:")
+    print("\nDetection Summary:")
     for label in sorted(label_groups.keys()):
         count = sum(1 for f in features if f['properties'].get('label') == label)
         print(f"  - {label.title()}: {count}")

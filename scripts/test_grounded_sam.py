@@ -11,15 +11,14 @@ import sys
 import json
 from pathlib import Path
 from PIL import Image
-import numpy as np
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.grounded_sam_detector import (
+from parcel_ai_json.grounded_sam_detector import (  # noqa: E402
     GroundedSAMDetector,
 )
-from parcel_ai_json.coordinate_converter import ImageCoordinateConverter
+from parcel_ai_json.coordinate_converter import ImageCoordinateConverter  # noqa: E402
 
 
 def test_grounded_sam_detection():
@@ -103,7 +102,7 @@ def test_grounded_sam_detection():
         )
 
         # Run detection
-        print(f"\nRunning Grounded-SAM detection...")
+        print("\nRunning Grounded-SAM detection...")
         print(f"Prompts: {', '.join(prompts)}")
 
         try:

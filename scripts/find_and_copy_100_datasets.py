@@ -2,7 +2,6 @@
 Find and copy exactly 100 datasets where both satellite image and regrid parcel exist.
 """
 
-import os
 import shutil
 import pandas as pd
 from pathlib import Path
@@ -107,7 +106,7 @@ def main():
         if (i + 1) % 10 == 0:
             print(f"   Copied {i + 1}/{len(complete_records)} datasets...")
 
-    print(f"\n   ✓ All files copied successfully\n")
+    print("\n   ✓ All files copied successfully\n")
 
     # Save index
     print("5. Creating index file...")

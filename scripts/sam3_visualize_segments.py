@@ -6,21 +6,18 @@ Visualize SAM3 segmentation masks for multiple classes
 import os
 import sys
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
+from sam3.model_builder import build_sam3_image_model
+from sam3.model.sam3_image_processor import Sam3Processor
 
 # Load environment
 load_dotenv()
 os.environ['HF_TOKEN'] = os.getenv('HF_TOKEN', '')
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
-from PIL import Image, ImageDraw, ImageFont
-import numpy as np
-import torch
-
 # Determine device
 device = "cpu"
-
-from sam3.model_builder import build_sam3_image_model
-from sam3.model.sam3_image_processor import Sam3Processor
 
 # Get image path from arguments
 if len(sys.argv) < 2:
@@ -31,12 +28,12 @@ image_path = sys.argv[1]
 
 # Define classes to detect and their colors
 classes = {
-    'houses': (255, 0, 0, 120),      # Red
-    'cars': (0, 255, 0, 120),        # Green
-    'trees': (0, 100, 0, 100),       # Dark Green
-    'roof': (255, 165, 0, 120),      # Orange
-    'driveway': (128, 128, 128, 100), # Gray
-    'road': (64, 64, 64, 100),       # Dark Gray
+    'houses': (255, 0, 0, 120),  # Red
+    'cars': (0, 255, 0, 120),  # Green
+    'trees': (0, 100, 0, 100),  # Dark Green
+    'roof': (255, 165, 0, 120),  # Orange
+    'driveway': (128, 128, 128, 100),  # Gray
+    'road': (64, 64, 64, 100),  # Dark Gray
 }
 
 # Load image
@@ -100,14 +97,20 @@ output_image = output_image.convert('RGB')
 draw = ImageDraw.Draw(output_image)
 try:
     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
-    font_large = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
-except:
+    font_large = ImageFont.truetype(
+        "/System/Library/Fonts/Helvetica.ttc", 16
+    )
+except Exception:
     font = ImageFont.load_default()
     font_large = font
 
 # Draw legend background
 legend_height = 20 + len(classes) * 22
-draw.rectangle([(10, 10), (200, legend_height)], fill=(255, 255, 255, 230), outline='black')
+draw.rectangle(
+    [(10, 10), (200, legend_height)],
+    fill=(255, 255, 255, 230),
+    outline='black'
+)
 
 # Draw legend title
 draw.text((15, 12), "Detected Classes:", fill='black', font=font_large)
@@ -125,21 +128,25 @@ for class_name, color in classes.items():
     y += 22
 
 # Save output
-output_path = image_path.replace('.jpg', '_segments.jpg').replace('.png', '_segments.png')
+output_path = (
+    image_path.replace('.jpg', '_segments.jpg')
+    .replace('.png', '_segments.png')
+)
 output_image.save(output_path)
 print(f"\n✅ Saved segmentation visualization to: {output_path}")
 
 # Print summary
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("SEGMENTATION SUMMARY")
-print("="*60)
+print("=" * 60)
 for class_name, results in all_results.items():
-    print(f"{class_name.upper():15s}: {results['count']:2d} objects detected")
-print("="*60)
+    count = results['count']
+    print(f"{class_name.upper():15s}: {count:2d} objects detected")
+print("=" * 60)
 
 # Try to open
 try:
     output_image.show()
     print("\nOpening visualization...")
-except:
+except Exception:
     print("\nPlease open the file manually.")

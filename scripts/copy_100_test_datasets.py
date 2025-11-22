@@ -7,7 +7,6 @@ Each dataset includes:
 - Coordinates (lat, lon)
 """
 
-import os
 import shutil
 import pandas as pd
 from pathlib import Path
@@ -62,10 +61,7 @@ def main():
     missing_regrid = []
 
     for idx, row in df_subset.iterrows():
-        quote_id = row['quote_id']
         image_filename = row['image_filename']
-        lat = row['latitude']
-        lon = row['longitude']
 
         # Derive regrid filename from image filename
         # Example: "2117_ildica_ct_spring_valley_ca_91977.jpg"

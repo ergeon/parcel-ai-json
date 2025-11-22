@@ -92,7 +92,6 @@ def main():
 
     success_count = 0
     for idx, (i, row) in enumerate(samples.iterrows(), 1):
-        quote_id = row['quote_id']
         image_filename = row['image_filename']
         lat = row['latitude']
         lon = row['longitude']
@@ -133,7 +132,7 @@ def main():
                     "regrid_parcel_polygon": json.dumps([parcel_polygon]),
                 }
 
-                print(f"  → Calling API...")
+                print("  → Calling API...")
                 response = requests.post(API_URL, files=files, data=data)
 
             if response.status_code == 200:
@@ -177,9 +176,9 @@ def main():
         print()
 
     # Summary
-    print(f"{'='*80}")
-    print(f"Summary:")
-    print(f"{'='*80}")
+    print("=" * 80)
+    print("Summary:")
+    print("=" * 80)
     print(f"Requested:  {args.count}")
     print(f"Processed:  {success_count}")
     print(f"Results in: {RESULTS_DIR}")

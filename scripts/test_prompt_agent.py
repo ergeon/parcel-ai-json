@@ -8,8 +8,8 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parcel_ai_json.agents import PromptEngineeringAgent
-from parcel_ai_json.agents.prompt_engineer import PropertyContext
+from parcel_ai_json.agents import PromptEngineeringAgent  # noqa: E402
+from parcel_ai_json.agents.prompt_engineer import PropertyContext  # noqa: E402
 
 
 def test_prompt_agent():
@@ -83,12 +83,14 @@ def test_prompt_agent():
         result = agent.generate_prompts(scenario["context"], max_prompts=15)
 
         # Display results
-        print(f"\n📍 Property Context:")
-        print(f"   Location: {scenario['context'].center_lat:.4f}, "
-              f"{scenario['context'].center_lon:.4f}")
-        print(f"   Lot Size: {scenario['context'].lot_size_sqft:,} sqft "
-              f"({scenario['context'].lot_size_sqft / 43560:.2f} acres)")
-        print(f"   Climate: {scenario['context'].climate_zone}")
+        ctx = scenario['context']
+        print("\n📍 Property Context:")
+        print(f"   Location: {ctx.center_lat:.4f}, {ctx.center_lon:.4f}")
+        print(
+            f"   Lot Size: {ctx.lot_size_sqft:,} sqft "
+            f"({ctx.lot_size_sqft / 43560:.2f} acres)"
+        )
+        print(f"   Climate: {ctx.climate_zone}")
 
         print(f"\n🎯 Generated Prompts ({len(result.prompts)}):")
         for i, prompt in enumerate(result.prompts, 1):
@@ -99,13 +101,13 @@ def test_prompt_agent():
             for i, prompt in enumerate(result.excluded_prompts, 1):
                 print(f"   {i:2d}. {prompt}")
 
-        print(f"\n💡 Agent Reasoning:")
+        print("\n💡 Agent Reasoning:")
         print(f"   {result.reasoning}")
 
-        print(f"\n🌡️  Climate Analysis:")
+        print("\n🌡️  Climate Analysis:")
         print(f"   {result.climate_context}")
 
-        print(f"\n🏘️  Property Analysis:")
+        print("\n🏘️  Property Analysis:")
         print(f"   {result.property_analysis}")
 
         print(f"\n✅ Confidence Score: {result.confidence_score:.2f}")
@@ -147,11 +149,11 @@ def test_prompt_agent():
 
         print(f"\nScenario: {result_data['scenario']}")
         if unique_to_agent:
-            print(f"  🆕 New prompts (agent-specific):")
+            print("  🆕 New prompts (agent-specific):")
             for prompt in unique_to_agent:
                 print(f"     - {prompt}")
         if unique_to_default:
-            print(f"  🔄 Replaced default prompts:")
+            print("  🔄 Replaced default prompts:")
             for prompt in unique_to_default:
                 print(f"     - {prompt}")
 

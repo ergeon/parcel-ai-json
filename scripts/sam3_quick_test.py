@@ -40,8 +40,6 @@ print(f"\n📷 Using image: {image_path}")
 
 try:
     from PIL import Image
-    import numpy as np
-    import torch
 
     # Load and display image info
     image = Image.open(image_path)
@@ -52,7 +50,7 @@ try:
     # Determine device
     # Note: MPS has compatibility issues with SAM3, so we use CPU for stability
     device = "cpu"
-    print(f"\n💻 Using: CPU (MPS has compatibility issues with SAM3)")
+    print("\n💻 Using: CPU (MPS has compatibility issues with SAM3)")
 
     print("\n🚀 Loading SAM3 model...")
     print("   (This will download ~4GB on first run - please be patient)")
@@ -83,7 +81,7 @@ try:
     boxes = output["boxes"]
     scores = output["scores"]
 
-    print(f"\n✅ Detection Results:")
+    print("\n✅ Detection Results:")
     print(f"   Total detections: {len(masks)}")
     print(f"   Bounding boxes: {len(boxes)}")
 
@@ -95,7 +93,7 @@ try:
         print(f"   Top 5 scores: {sorted(scores, reverse=True)[:5]}")
 
         # Show bounding boxes
-        print(f"\n   Top 3 bounding boxes (x1, y1, x2, y2):")
+        print("\n   Top 3 bounding boxes (x1, y1, x2, y2):")
         for i in range(min(3, len(boxes))):
             box = boxes[i]
             score = scores[i]

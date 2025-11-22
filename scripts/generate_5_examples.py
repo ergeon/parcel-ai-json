@@ -51,13 +51,7 @@ def get_coordinates(address):
 
 def get_satellite_image(lat, lon, output_path, zoom=20, width=512, height=512):
     """Download satellite image from Google Static Maps."""
-    print(f"  Downloading satellite image...")
-
-    # Using OpenStreetMap tile server as a fallback
-    # For production, use Google Maps Static API with API key
-    tile_url = (
-        f"https://mt1.google.com/vt/lyrs=s&x={{x}}&y={{y}}&z={zoom}"
-    )
+    print("  Downloading satellite image...")
 
     # Simple download using a basic tile
     # This is a placeholder - in production, use proper tile stitching
@@ -76,13 +70,13 @@ def get_satellite_image(lat, lon, output_path, zoom=20, width=512, height=512):
         print(f"    ✓ Saved to: {output_path}")
         return True
     else:
-        print(f"    ✗ Failed to download image")
+        print("    ✗ Failed to download image")
         return False
 
 
 def get_regrid_parcel(lat, lon):
     """Get parcel polygon from Regrid API."""
-    print(f"  Getting Regrid parcel data...")
+    print("  Getting Regrid parcel data...")
 
     if not REGRID_API_KEY:
         print("    ⚠ REGRID_API_KEY not set, using mock data")
@@ -125,7 +119,7 @@ def get_regrid_parcel(lat, lon):
 
 def run_detection(image_path, lat, lon, parcel_polygon, output_json):
     """Run detection via API."""
-    print(f"  Running detection...")
+    print("  Running detection...")
 
     with open(image_path, "rb") as f:
         files = {"image": f}
@@ -152,7 +146,7 @@ def run_detection(image_path, lat, lon, parcel_polygon, output_json):
 
 def generate_folium_map(geojson_path, image_path, lat, lon, output_html):
     """Generate Folium map from detection GeoJSON."""
-    print(f"  Generating Folium map...")
+    print("  Generating Folium map...")
 
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
