@@ -34,9 +34,10 @@ app = FastAPI(
     title="Parcel AI Property Detection API",
     description=(
         "Detect vehicles, pools, amenities, trees, fences, SAM segments, "
-        "SAM3 open-vocabulary detections (houses, cars, roofs, etc.), "
+        "SAM3 open-vocabulary segmentation (houses, cars, roofs, etc.), "
         "and custom objects (driveways, patios, sheds, etc.) via Grounded-SAM "
-        "in satellite imagery"
+        "in satellite imagery. SAM3 can be included in the main /detect endpoint "
+        "or used standalone via /segment/sam3"
     ),
     version="0.1.0",
 )
@@ -445,6 +446,19 @@ async def detect_property(
             "(default: comprehensive residential property features)"
         ),
     ),
+    include_sam3: bool = Form(
+        False, description="Include SAM3 open-vocabulary segmentation (default: False)"
+    ),
+    sam3_prompts: str = Form(
+        "houses, roof, driveway, patio, deck, swimming pool",
+        description=(
+            "Comma-separated text prompts for SAM3 detection "
+            "(default: common residential features)"
+        ),
+    ),
+    sam3_confidence_threshold: float = Form(
+        0.3, description="SAM3 minimum confidence threshold (0-1, default: 0.3)"
+    ),
     regrid_parcel_polygon: Optional[str] = Form(
         None,
         description=(
@@ -455,6 +469,7 @@ async def detect_property(
     detector: PropertyDetectionService = Depends(get_detector),
     sam_service: SAMSegmentationService = Depends(get_sam_service),
     grounded_sam_detector: GroundedSAMDetector = Depends(get_grounded_sam_detector),
+    sam3_service: SAM3SegmentationService = Depends(get_sam3_service),
 ):
     """Detect all property features in satellite image.
 
@@ -470,10 +485,14 @@ async def detect_property(
         detect_fences: Include fence detection (default: False)
         include_grounded_sam: Include Grounded-SAM detection (default: False)
         grounded_sam_prompts: Text prompts for Grounded-SAM detection
+        include_sam3: Include SAM3 open-vocabulary segmentation (default: False)
+        sam3_prompts: Text prompts for SAM3 detection
+        sam3_confidence_threshold: SAM3 minimum confidence threshold (default: 0.3)
         regrid_parcel_polygon: Required Regrid parcel polygon as JSON string
         detector: Injected PropertyDetectionService (for testing)
         sam_service: Injected SAMSegmentationService (for testing)
         grounded_sam_detector: Injected GroundedSAMDetector (for testing)
+        sam3_service: Injected SAM3SegmentationService (for testing)
 
     Returns:
         JSON with detected features in GeoJSON format or summary statistics
@@ -481,7 +500,8 @@ async def detect_property(
     logger.info(
         f"Processing detection request: lat={center_lat}, lon={center_lon}, "
         f"zoom={zoom_level}, format={format}, include_sam={include_sam}, "
-        f"detect_fences={detect_fences}, include_grounded_sam={include_grounded_sam}"
+        f"detect_fences={detect_fences}, include_grounded_sam={include_grounded_sam}, "
+        f"include_sam3={include_sam3}"
     )
 
     # Validate inputs (Clean Architecture - Input Validation Layer)
@@ -644,6 +664,43 @@ async def detect_property(
                 logger.info(
                     f"Grounded-SAM detection complete: "
                     f"{len(grounded_detections)} objects detected"
+                )
+
+            # Add SAM3 detections if requested
+            if include_sam3:
+                logger.info("Running SAM3 open-vocabulary segmentation...")
+                logger.info(f"Prompts: {sam3_prompts}")
+
+                # Parse prompts from comma-separated string
+                sam3_prompt_list = [p.strip() for p in sam3_prompts.split(",")]
+
+                # Update confidence threshold if different from default
+                if sam3_confidence_threshold != sam3_service.confidence_threshold:
+                    logger.info(
+                        "Updating SAM3 confidence threshold to "
+                        f"{sam3_confidence_threshold}"
+                    )
+                    sam3_service.confidence_threshold = sam3_confidence_threshold
+
+                # Run SAM3 segmentation
+                sam3_results = sam3_service.segment_image(
+                    satellite_image, sam3_prompt_list
+                )
+
+                # Add to GeoJSON
+                for class_name, detections_list in sam3_results.items():
+                    sam3_features = [
+                        det.to_geojson_feature() for det in detections_list
+                    ]
+                    geojson["features"].extend(sam3_features)
+
+                # Calculate statistics
+                total_sam3_detections = sum(
+                    len(dets) for dets in sam3_results.values()
+                )
+                logger.info(
+                    f"SAM3 segmentation complete: {total_sam3_detections} "
+                    f"total detections across {len(sam3_prompt_list)} classes"
                 )
 
             # Add regrid parcel polygon to GeoJSON output if provided
